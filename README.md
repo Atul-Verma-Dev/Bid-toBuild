@@ -1,9 +1,10 @@
 # OmniView — Smart Event Crowd Management
 
 FastAPI + SQLite backend **and web dashboard** for the Smart Event Crowd
-Management hackathon project. It manages event venues/zones, calculates crowd
-status, suggests redirection destinations, and serves announcements. Occupancy
-is supplied through the API (no sensors).
+Management hackathon project. It manages venues/zones and the event programme,
+calculates crowd status, suggests redirection destinations, tracks staff
+deployment, and serves announcements. Occupancy is supplied through the API
+(no sensors).
 
 The same server also hosts the four front-end pages in `templates/`, sharing the
 assets in `static/` — one command starts everything.
@@ -33,16 +34,22 @@ Web pages (served by FastAPI):
 The SQLite file `app.db` is created and seeded automatically on first start.
 Delete `app.db` to reset demo data.
 
-## Demo accounts
+## Accounts & roles
 
-| Username | Password   | Role  |
-| -------- | ---------- | ----- |
-| `admin`  | `admin123` | admin |
-| `user`   | `user123`  | user  |
+| Username | Password   | Role  | Can do                                                         |
+| -------- | ---------- | ----- | -------------------------------------------------------------- |
+| `user`   | `user123`  | user  | Operations: venues, events, staff deployment, redirections      |
+| `admin`  | `admin123` | admin | Everything a `user` can do, plus announcements                 |
 
-Admins can create/modify venues and announcements. Users (and unauthenticated
-callers) can read venue/crowd data and announcements. Read endpoints are open
-so the frontend can connect immediately.
+Reads are open, so every dashboard renders without signing in. Every write
+(venue name/capacity/occupancy, events, staff deployments, redirections) needs a
+bearer token from **either** role. Announcements stay admin-only.
+
+The pages deliberately do not advertise credentials: the Live Dashboard and the
+Zone Monitor open **signed in as the `user` operator account** (silently calling
+`POST /auth/login`), so staff deployment, venue and event work out of the box;
+signing out leaves them read-only. The `admin` account is available via
+“Switch account”.
 
 ## Auth flow
 
@@ -90,15 +97,40 @@ Send it as `Authorization: Bearer $TOKEN` on admin endpoints.
 
 ### Venues
 
-| Method | Path                        | Auth  | Description                                   |
-| ------ | --------------------------- | ----- | --------------------------------------------- |
-| GET    | `/venues`                   | —     | List venues (filters: `crowd_status`, `active`) |
-| GET    | `/venues/{id}`              | —     | Get one venue                                 |
-| GET    | `/venues/{id}/suggestion`   | —     | Redirection suggestion                        |
-| POST   | `/venues`                   | admin | Create a venue                                |
-| PATCH  | `/venues/{id}`              | admin | Rename / capacity / occupancy / opening / closing |
-| PATCH  | `/venues/{id}/occupancy`    | admin | Update current occupancy                      |
-| DELETE | `/venues/{id}`              | admin | Remove a venue                                |
+| Method | Path                        | Auth     | Description                                   |
+| ------ | --------------------------- | -------- | --------------------------------------------- |
+| GET    | `/venues`                   | —        | List venues (filters: `crowd_status`, `active`) |
+| GET    | `/venues/{id}`              | —        | Get one venue                                 |
+| GET    | `/venues/{id}/suggestion`   | —        | Redirection suggestion                        |
+| POST   | `/venues`                   | signed in | Create a venue                               |
+| PATCH  | `/venues/{id}`              | signed in | Rename / capacity / occupancy / opening / closing |
+| PATCH  | `/venues/{id}/occupancy`    | signed in | Update current occupancy                     |
+| DELETE | `/venues/{id}`              | signed in | Remove a venue                               |
+
+Every venue response carries `current_event` — the event scheduled in that
+venue, or `null` — so any page can show what is on where.
+
+### Events (the programme)
+
+| Method | Path            | Auth      | Description                                          |
+| ------ | --------------- | --------- | ---------------------------------------------------- |
+| GET    | `/events`       | —         | List events (filter: `venue_id`), soonest first       |
+| GET    | `/events/{id}`  | —         | Get one event                                        |
+| POST   | `/events`       | signed in | Create an event and assign a venue                   |
+| PATCH  | `/events/{id}`  | signed in | Rename / move to another venue (`venue_id: null` clears it) |
+| DELETE | `/events/{id}`  | signed in | Delete an event                                      |
+
+### Staff deployment
+
+| Method | Path                          | Auth      | Description                                     |
+| ------ | ----------------------------- | --------- | ----------------------------------------------- |
+| GET    | `/staff`                      | —         | Pool size, deployed/available totals, per-venue headcount |
+| POST   | `/staff/deployments`          | signed in | Deploy `{venue_id, count}` from the shared pool |
+| DELETE | `/staff/deployments/{venue_id}` | signed in | Recall every staff member from a venue        |
+
+The pool holds 12 staff. Deployments live in SQLite, so the headcount is shared
+by the dashboard, the zone monitor and the landing-page snapshot, and survives
+reloads. Deploying more than the pool holds returns `409` with a clear message.
 
 ### Announcements
 
@@ -127,7 +159,12 @@ to compute anything:
   "closing_time": "23:00",
   "is_active": true,
   "created_at": "2026-10-02T05:20:06+00:00",
-  "updated_at": "2026-10-02T05:20:06+00:00"
+  "updated_at": "2026-10-02T05:20:06+00:00",
+  "current_event": {
+    "id": 1,
+    "name": "OmniHack 2026",
+    "event_date": "2026-10-02"
+  }
 }
 ```
 
@@ -170,6 +207,10 @@ suggested. If nothing is available, `suggestion` is `null` with a `reason`.
 | VIP Lounge      | 120/150   | `MODERATE`  |
 | Sunrise Stage   | 0/300     | `NORMAL` (inactive outside 06:00–06:30) |
 
+The same first run seeds an event programme — `OmniHack 2026` (today, Main
+Auditorium), `Opening Night Gala` (tomorrow, Central Plaza), `TechDay Summit` and
+`Genomics Workshop` — plus an empty staff pool.
+
 ## Project layout
 
 ```
@@ -178,7 +219,7 @@ database.py        # SQLite schema, connection dependency, seed data
 models.py          # Pydantic request/response models
 auth.py            # password hashing, signed tokens, role dependencies
 crowd.py           # occupancy %, status, active window, redirection
-routers/           # auth.py, venues.py, announcements.py
+routers/           # auth.py, venues.py, events.py, staff.py, announcements.py
 templates/         # home.html, index.html, zone-monitor.html, yash_dashboard.html
 static/css/        # monitoring.css, yash_dashboard.css
 static/js/         # monitoring.js, yash_dashboard.js
@@ -189,16 +230,20 @@ static/js/         # monitoring.js, yash_dashboard.js
 Every page talks to the API on the **same origin** (no CORS setup needed) and
 falls back to local demo data if the backend is unreachable:
 
-- **Live dashboard** (`/dashboard`) — `GET /venues` on load; `PATCH /venues/{id}/occupancy`,
-  `PATCH /venues/{id}`, `POST /venues` and `DELETE /venues/{id}` when signed in as
-  admin (otherwise changes stay local to the page). The redirection banner uses the
-  backend's `GET /venues/{id}/suggestion` to confirm and explain its pick.
-- **Zone monitor** (`/zones`) — polls `GET /venues` every 10 s for cards, alerts,
-  redirection options and staff hints; the crowd simulation writes occupancy back
-  through `PATCH /venues/{id}/occupancy` when an admin token is stored.
+- **Live dashboard** (`/dashboard`) — `GET /venues` + `GET /events` + `GET /staff`;
+  renames venues (`PATCH /venues/{id}`), edits capacity/occupancy, adds venues, and
+  renames, deletes or creates events with their venue (`/events`). Each venue card
+  shows the event running in it and the staff deployed there. The redirection banner
+  uses the backend's `GET /venues/{id}/suggestion` to confirm and explain its pick.
+- **Zone monitor** (`/zones`) — polls `GET /venues` + `GET /events` + `GET /staff`
+  every 10 s for zone cards, alerts and redirection options. **Deploy staff** and
+  **Recall** write straight to `/staff/deployments`, and the crowd simulation writes
+  occupancy through `PATCH /venues/{id}/occupancy`.
 - **Analytics** (`/analytics`) — polls `GET /venues` + `GET /announcements` every 5 s
-  and renders the doughnut / bar / trend charts with Chart.js.
-- **Home** (`/`) — checks `/health`, lists live venues and links every dashboard.
+  and renders the doughnut / bar charts plus a trend line built from the live samples
+  collected while the page is open (no fabricated history).
+- **Home** (`/`) — checks `/health`, lists live venues with the event on in each one
+  and the staff on site, and links every dashboard.
 
-Admin tokens are stored in `localStorage` (`token`, `auth_user`, `auth_role`), so
+Auth tokens are stored in `localStorage` (`token`, `auth_user`, `auth_role`), so
 signing in on one page signs you in on the others.

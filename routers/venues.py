@@ -1,10 +1,10 @@
-"""Venue endpoints. Reads are public; writes require an admin token."""
+"""Venue endpoints. Reads are public; writes need a signed-in user."""
 
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from auth import require_admin
+from auth import get_current_user
 from crowd import find_redirection, venue_to_dict
 from database import get_db, now_iso
 from models import OccupancyUpdate, RedirectionOut, VenueCreate, VenueOut, VenueUpdate
@@ -22,9 +22,35 @@ def _get_venue_or_404(db, venue_id: int):
     return row
 
 
+def _events_by_venue(db) -> dict[int, dict]:
+    """Map venue_id -> the event currently scheduled in it."""
+    rows = db.execute(
+        "SELECT id, name, event_date, venue_id FROM events WHERE venue_id IS NOT NULL"
+    ).fetchall()
+    return {
+        row["venue_id"]: {
+            "id": row["id"],
+            "name": row["name"],
+            "event_date": row["event_date"],
+        }
+        for row in rows
+    }
+
+
+def _with_events(db, venue: dict) -> dict:
+    venue["current_event"] = _events_by_venue(db).get(venue["id"])
+    return venue
+
+
 def _all_venues(db) -> list[dict]:
     rows = db.execute("SELECT * FROM venues ORDER BY name COLLATE NOCASE").fetchall()
-    return [venue_to_dict(row) for row in rows]
+    events = _events_by_venue(db)
+    venues = []
+    for row in rows:
+        venue = venue_to_dict(row)
+        venue["current_event"] = events.get(venue["id"])
+        venues.append(venue)
+    return venues
 
 
 @router.get("", response_model=list[VenueOut], summary="List all venues")
@@ -43,7 +69,7 @@ def list_venues(
 
 @router.get("/{venue_id}", response_model=VenueOut, summary="Get a single venue")
 def get_venue(venue_id: int, db=Depends(get_db)):
-    return venue_to_dict(_get_venue_or_404(db, venue_id))
+    return _with_events(db, venue_to_dict(_get_venue_or_404(db, venue_id)))
 
 
 @router.get(
@@ -62,10 +88,10 @@ def get_suggestion(venue_id: int, db=Depends(get_db)):
     "",
     response_model=VenueOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a venue (admin)",
+    summary="Create a venue (signed-in user)",
 )
 def create_venue(
-    payload: VenueCreate, _admin=Depends(require_admin), db=Depends(get_db)
+    payload: VenueCreate, _user=Depends(get_current_user), db=Depends(get_db)
 ):
     timestamp = now_iso()
     try:
@@ -88,18 +114,18 @@ def create_venue(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A venue named '{payload.name}' already exists.",
         )
-    return venue_to_dict(_get_venue_or_404(db, cursor.lastrowid))
+    return _with_events(db, venue_to_dict(_get_venue_or_404(db, cursor.lastrowid)))
 
 
 @router.patch(
     "/{venue_id}",
     response_model=VenueOut,
-    summary="Update a venue (admin): name, capacity, occupancy, or timings",
+    summary="Update a venue (signed-in user): rename, capacity, occupancy, or timings",
 )
 def update_venue(
     venue_id: int,
     payload: VenueUpdate,
-    _admin=Depends(require_admin),
+    _user=Depends(get_current_user),
     db=Depends(get_db),
 ):
     row = _get_venue_or_404(db, venue_id)
@@ -125,18 +151,18 @@ def update_venue(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A venue named '{changes.get('name')}' already exists.",
         )
-    return venue_to_dict(_get_venue_or_404(db, venue_id))
+    return _with_events(db, venue_to_dict(_get_venue_or_404(db, venue_id)))
 
 
 @router.patch(
     "/{venue_id}/occupancy",
     response_model=VenueOut,
-    summary="Update a venue's current occupancy (admin)",
+    summary="Update a venue's current occupancy (signed-in user)",
 )
 def update_occupancy(
     venue_id: int,
     payload: OccupancyUpdate,
-    _admin=Depends(require_admin),
+    _user=Depends(get_current_user),
     db=Depends(get_db),
 ):
     _get_venue_or_404(db, venue_id)
@@ -144,15 +170,15 @@ def update_occupancy(
         "UPDATE venues SET occupancy = ?, updated_at = ? WHERE id = ?",
         (payload.occupancy, now_iso(), venue_id),
     )
-    return venue_to_dict(_get_venue_or_404(db, venue_id))
+    return _with_events(db, venue_to_dict(_get_venue_or_404(db, venue_id)))
 
 
 @router.delete(
     "/{venue_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remove a venue (admin)",
+    summary="Remove a venue (signed-in user)",
 )
-def delete_venue(venue_id: int, _admin=Depends(require_admin), db=Depends(get_db)):
+def delete_venue(venue_id: int, _user=Depends(get_current_user), db=Depends(get_db)):
     _get_venue_or_404(db, venue_id)
     db.execute("DELETE FROM venues WHERE id = ?", (venue_id,))
     return None

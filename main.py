@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from database import init_db
-from routers import announcements, auth, venues
+from routers import announcements, auth, events, staff, venues
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -61,6 +61,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(venues.router)
+app.include_router(events.router)
+app.include_router(staff.router)
 app.include_router(announcements.router)
 
 # Serve the CSS/JS that the templates reference (/static/css/*, /static/js/*).
@@ -110,10 +112,17 @@ def api_index():
             "list_venues": "GET /venues",
             "get_venue": "GET /venues/{id}",
             "redirection": "GET /venues/{id}/suggestion",
-            "create_venue": "POST /venues (admin)",
-            "update_venue": "PATCH /venues/{id} (admin)",
-            "update_occupancy": "PATCH /venues/{id}/occupancy (admin)",
-            "delete_venue": "DELETE /venues/{id} (admin)",
+            "create_venue": "POST /venues (signed in)",
+            "update_venue": "PATCH /venues/{id} (signed in)",
+            "update_occupancy": "PATCH /venues/{id}/occupancy (signed in)",
+            "delete_venue": "DELETE /venues/{id} (signed in)",
+            "list_events": "GET /events",
+            "create_event": "POST /events (signed in)",
+            "update_event": "PATCH /events/{id} (signed in)",
+            "delete_event": "DELETE /events/{id} (signed in)",
+            "staff_overview": "GET /staff",
+            "deploy_staff": "POST /staff/deployments (signed in)",
+            "recall_staff": "DELETE /staff/deployments/{venue_id} (signed in)",
             "list_announcements": "GET /announcements",
             "create_announcement": "POST /announcements (admin)",
         },

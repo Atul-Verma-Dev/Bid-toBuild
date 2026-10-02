@@ -60,25 +60,37 @@
                     <span id="connDot" class="h-2.5 w-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
                     <span id="connText" class="font-semibold">Connecting to FastAPI…</span>
                 </div>
-                <form id="loginForm" class="flex flex-wrap items-center gap-2 text-sm" autocomplete="off">
-                    <input id="loginUsername" type="text" placeholder="username"
-                           class="w-32 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 outline-none focus:border-blue-400">
-                    <input id="loginPassword" type="password" placeholder="password"
-                           class="w-36 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 outline-none focus:border-blue-400">
-                    <button id="loginBtn" type="submit"
-                            class="rounded-lg bg-blue-600 px-3 py-1.5 font-semibold hover:bg-blue-500 transition">
-                        <i class="fas fa-sign-in-alt mr-1"></i>Login
+                <div class="flex flex-wrap items-center gap-2 text-sm">
+                    <span id="accountChip"
+                          class="hidden items-center gap-2 rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-1.5">
+                        <i class="fas fa-user-circle text-blue-300"></i>
+                        <span id="accountLabel" class="font-semibold"></span>
+                    </span>
+
+                    <form id="loginForm" class="hidden flex-wrap items-center gap-2" autocomplete="off">
+                        <input id="loginUsername" type="text" placeholder="username"
+                               class="w-32 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 outline-none focus:border-blue-400">
+                        <input id="loginPassword" type="password" placeholder="password"
+                               class="w-36 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 outline-none focus:border-blue-400">
+                        <button id="loginBtn" type="submit"
+                                class="rounded-lg bg-blue-600 px-3 py-1.5 font-semibold hover:bg-blue-500 transition">
+                            <i class="fas fa-sign-in-alt mr-1"></i>Sign in
+                        </button>
+                    </form>
+
+                    <button id="switchAccountBtn" type="button"
+                            class="hidden rounded-lg bg-slate-700 px-3 py-1.5 font-semibold hover:bg-slate-600 transition">
+                        <i class="fas fa-user-edit mr-1"></i>Switch account
                     </button>
                     <button id="logoutBtn" type="button"
                             class="hidden rounded-lg bg-slate-700 px-3 py-1.5 font-semibold hover:bg-slate-600 transition">
-                        <i class="fas fa-sign-out-alt mr-1"></i>Logout
+                        <i class="fas fa-sign-out-alt mr-1"></i>Sign out
                     </button>
                     <button id="refreshBtn" type="button"
                             class="rounded-lg border border-slate-600 px-3 py-1.5 font-semibold hover:bg-slate-800 transition">
-                        <i class="fas fa-sync-alt mr-1"></i>Refresh live data
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
                     </button>
-                    <span class="text-xs text-slate-400">admin / admin123</span>
-                </form>
+                </div>
             </div>
         </div>
     </div>
@@ -127,25 +139,30 @@
     <!-- ===================== MAIN CONTENT ===================== -->
     <main class="container mx-auto px-4 py-8">
 
-        <!-- ===================== CURRENT EVENT BAR ===================== -->
+        <!-- ===================== EVENT PROGRAMME ===================== -->
         <div class="bg-gradient-to-r from-gray-800 to-gray-700 text-white rounded-xl shadow-md p-6 mb-8 border border-gray-400">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div>
                     <h2 class="text-xl font-bold flex items-center gap-2">
                         <i class="fas fa-calendar-alt text-purple-300"></i>
-                        Current Event
+                        Event programme
                     </h2>
-                    <p id="currentEventLabel" class="text-gray-200 font-semibold mt-1"></p>
+                    <p id="currentEventLabel" class="text-gray-200 font-semibold mt-1">Loading events…</p>
+                    <p id="currentEventVenue" class="text-purple-200 text-sm mt-1"></p>
                     <p id="currentEventDescription" class="text-gray-400 text-sm"></p>
                 </div>
                 <div class="flex flex-col items-start sm:items-end gap-2">
                     <div class="flex flex-wrap gap-2" id="eventSelector">
                         <!-- Events are dynamically populated here -->
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex flex-wrap gap-2">
                         <button id="editEventBtn" type="button"
                                 class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow">
-                            <i class="fas fa-pen mr-1"></i>Edit event
+                            <i class="fas fa-pen mr-1"></i>Rename / Edit
+                        </button>
+                        <button id="deleteEventBtn" type="button"
+                                class="bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow">
+                            <i class="fas fa-trash-alt mr-1"></i>Delete event
                         </button>
                         <button id="newEventBtn" type="button"
                                 class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow">
@@ -155,14 +172,18 @@
                 </div>
             </div>
 
-            <!-- Inline event editor (hidden until "Edit event" is clicked) -->
+            <!-- Inline event editor (hidden until "Rename / Edit" or "New event" is clicked) -->
             <form id="eventEditForm" class="hidden mt-4 grid grid-cols-1 sm:grid-cols-12 gap-3 border-t border-gray-600 pt-4">
                 <input id="eventEditName" type="text" required placeholder="Event name"
                        class="sm:col-span-4 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
                 <input id="eventEditDate" type="date" required
                        class="sm:col-span-3 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
+                <select id="eventEditVenue"
+                        class="sm:col-span-5 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
+                    <!-- Venue choices are populated by JS -->
+                </select>
                 <input id="eventEditDescription" type="text" placeholder="Description / expected attendance"
-                       class="sm:col-span-5 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
+                       class="sm:col-span-12 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
                 <div class="sm:col-span-12 flex gap-2">
                     <button type="submit"
                             class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
@@ -181,27 +202,28 @@
             <!-- Each venue card is rendered by JS into this container -->
         </div>
 
-        <!-- ===================== VENUE MANAGEMENT TOOLBAR ===================== -->
+        <!-- ===================== VENUE MANAGEMENT ===================== -->
         <div class="bg-white rounded-xl shadow-md p-5 mb-8 border border-gray-200">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="flex flex-wrap items-center gap-3">
                     <h2 class="text-lg font-bold text-gray-800">
-                        <i class="fas fa-plus-circle mr-2 text-emerald-600"></i>Add Venue / Delete
+                        <i class="fas fa-plus-circle mr-2 text-emerald-600"></i>Venues
                     </h2>
-                    <div class="flex gap-2">
-                        <button id="addVenueBtn" type="button"
-                                class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
-                            <i class="fas fa-plus mr-1"></i>Add Venue
-                        </button>
-                        <button id="clearVenuesBtn" type="button"
-                                class="bg-gray-400 hover:bg-gray-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
-                            <i class="fas fa-trash-alt mr-1"></i>Clear All
-                        </button>
-                    </div>
+                    <input id="newVenueName" type="text" placeholder="New venue name"
+                           class="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500">
+                    <input id="newVenueCapacity" type="number" min="1" step="1" value="100" aria-label="Capacity"
+                           class="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-emerald-500">
+                    <button id="addVenueBtn" type="button"
+                            class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                        <i class="fas fa-plus mr-1"></i>Add venue
+                    </button>
+                    <button id="clearVenuesBtn" type="button"
+                            class="bg-gray-400 hover:bg-gray-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                        <i class="fas fa-eye-slash mr-1"></i>Clear view
+                    </button>
                 </div>
                 <p class="text-xs text-gray-500">
-                    Logged in as admin? Changes are written to the SQLite backend with
-                    <code>PATCH /venues/{id}/occupancy</code>. Otherwise they stay local to this page.
+                    Names, capacity, events and staff deployments are saved to the backend when you are signed in.
                 </p>
             </div>
         </div>
@@ -251,6 +273,7 @@
         token: localStorage.getItem("token") || "",
         username: localStorage.getItem("auth_user") || "",
         role: localStorage.getItem("auth_role") || "",
+        get isLoggedIn() { return Boolean(this.token); },
         get isAdmin() { return this.role === "admin"; },
         save(data) {
             this.token = data.access_token;
@@ -297,28 +320,33 @@
        1. STATE — single source of truth for the whole dashboard
        ================================================================= */
     const state = {
-        currentEvent: {
-            id: "event_1",
-            name: "OmniHack 2026",
-            date: "2026-10-02",
-            description: "2-day tech hackathon | 1,500 attendees"
-        },
-        availableEvents: [
-            { id: "event_1", name: "OmniHack 2026", date: "2026-10-02", description: "2-day tech hackathon | 1,500 attendees" },
-            { id: "event_2", name: "TechDay Summit", date: "2026-11-15", description: "Industry conference | 800 attendees" },
-            { id: "event_3", name: "Genomics Workshop", date: "2026-12-01", description: "Lab & presentation day | 250 attendees" }
-        ],
-        // Local fallback venues, used until live data loads (or if the API is offline).
-        venues: [
-            { name: "MAIN HALL",  current: 300, max: 500 },
-            { name: "FOOD COURT", current: 150, max: 300 },
-            { name: "AUDITORIUM", current: 420, max: 600 },
-            { name: "EXHIBITION", current: 90,  max: 150 }
-        ],
-        live: false,          // true once GET /venues succeeded
-        suggestionSeq: 0,     // guards against stale async suggestion responses
-        bannerZoneId: null    // venue currently shown in the redirection banner
+        currentEventId: null,   // event selected in the programme bar
+        events: [],             // GET /events — every event carries its venue
+        venues: [],             // GET /venues
+        staff: null,            // GET /staff — pool totals + per-venue headcount
+        live: false,            // true once GET /venues succeeded
+        suggestionSeq: 0,       // guards against stale async suggestion responses
+        bannerZoneId: null      // venue currently shown in the redirection banner
     };
+
+    /** The event shown in the programme bar (falls back to the first one). */
+    function selectedEvent() {
+        return state.events.find(ev => ev.id === state.currentEventId)
+            || state.events[0]
+            || null;
+    }
+
+    /** The event running inside a venue, shown on the venue card. */
+    function eventForVenue(venue) {
+        return venue.current_event || null;
+    }
+
+    /** Staff currently deployed to a venue (0 when the pool has not loaded). */
+    function staffForVenue(venue) {
+        if (!state.staff || !Array.isArray(state.staff.per_venue)) return 0;
+        const entry = state.staff.per_venue.find(z => z.venue_id === venue.id);
+        return entry ? entry.staff : 0;
+    }
 
     /* =================================================================
        2. DOM REFERENCES + SMALL HELPERS
@@ -337,6 +365,11 @@
     const connText        = document.getElementById("connText");
     const loginBtn        = document.getElementById("loginBtn");
     const logoutBtn       = document.getElementById("logoutBtn");
+    const loginForm       = document.getElementById("loginForm");
+    const switchAccountBtn = document.getElementById("switchAccountBtn");
+    const accountChip     = document.getElementById("accountChip");
+    const accountLabel    = document.getElementById("accountLabel");
+    const eventEditVenue  = document.getElementById("eventEditVenue");
 
     const esc = (value) => String(value == null ? "" : value)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -365,14 +398,14 @@
        2b. WRITE PERMISSIONS + REDIRECT LOG
        ================================================================= */
 
-    /** Every write (venue edits, redirections) needs a live backend + admin token. */
-    function isWritable() { return state.live && auth.isAdmin; }
+    /** Every write (venue / event edits, staff, redirections) needs the backend + a sign-in. */
+    function isWritable() { return state.live && auth.isLoggedIn; }
 
     /** Returns true — and explains why — when a write must be blocked. */
     function blockWrite(action) {
         if (isWritable()) return false;
         toast(state.live
-            ? `${action} is admin-only. Sign in with admin / admin123.`
+            ? `${action} needs you to be signed in. Use “Switch account” in the top bar.`
             : `${action} needs the backend. Start the API and reload.`, "error");
         return true;
     }
@@ -380,10 +413,10 @@
     function handleWriteError(err, prefix) {
         if (err.status === 401) {
             auth.clear();
-            toast(`${prefix}: session expired — sign in again as admin.`, "error");
+            toast(`${prefix}: session expired — sign in again.`, "error");
             renderConnection();
         } else if (err.status === 403) {
-            toast(`${prefix}: admin privileges required.`, "error");
+            toast(`${prefix}: your account does not have permission for that.`, "error");
         } else {
             toast(`${prefix}: ${err.message}`, "error");
         }
@@ -444,7 +477,8 @@
             apiStatus: raw.status,               // NORMAL | MODERATE | WARNING | CRITICAL | OVERCROWDED
             active: raw.is_active,
             hours: `${raw.opening_time}–${raw.closing_time}`,
-            percentage: raw.occupancy_percentage
+            percentage: raw.occupancy_percentage,
+            current_event: raw.current_event || null
         };
     }
 
@@ -509,6 +543,18 @@
             if (zone.hours)      metaBits.push(`<span class="text-xs ${zone.active ? "text-green-600" : "text-red-500"}">
                     <i class="fas fa-clock mr-1"></i>${zone.active ? "Open" : "Closed"} · ${esc(zone.hours)}</span>`);
 
+            // What is happening in this venue right now.
+            const event = eventForVenue(zone);
+            metaBits.push(event
+                ? `<span class="text-xs bg-purple-100 text-purple-800 border border-purple-300 rounded-full px-2 py-0.5">
+                       <i class="fas fa-calendar-day mr-1"></i>${esc(event.name)}</span>`
+                : `<span class="text-xs bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-2 py-0.5">
+                       <i class="fas fa-calendar-day mr-1"></i>No event scheduled</span>`);
+
+            const staffHere = staffForVenue(zone);
+            if (staffHere > 0) metaBits.push(`<span class="text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-full px-2 py-0.5">
+                    <i class="fas fa-user-shield mr-1"></i>${staffHere} staff deployed</span>`);
+
             html += `
                 <div class="bg-white rounded-xl shadow-md border-2 p-5 sm:p-6 ${style.card} transition-all duration-300">
                     <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
@@ -534,7 +580,23 @@
                              style="width: ${width}%;"></div>
                     </div>
 
-                    <!-- (a) Current occupancy -->
+                    <!-- (a) Rename the venue -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                            Venue name
+                        </label>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="text" maxlength="100" value="${esc(zone.name)}"
+                                   id="nameInput_${index}"
+                                   class="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-500 outline-none transition">
+                            <button type="button" data-action="rename-venue" data-index="${index}"
+                                    class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                                <i class="fas fa-pen mr-1"></i>Rename
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- (b) Current occupancy -->
                     <div class="mb-3">
                         <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
                             Current Attendance
@@ -557,7 +619,7 @@
                         </p>
                     </div>
 
-                    <!-- (b) Max capacity -->
+                    <!-- (c) Max capacity -->
                     <div class="mt-3 pt-3 border-t border-gray-200">
                         <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
                             Max Capacity Limit
@@ -573,7 +635,7 @@
                         </div>
                     </div>
 
-                    <!-- (c) Remove venue -->
+                    <!-- (d) Remove venue -->
                     <div class="mt-3 pt-3 border-t border-gray-200">
                         <button type="button" data-action="delete-venue" data-index="${index}"
                                 class="w-full bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
@@ -594,7 +656,7 @@
 
         grid.innerHTML = html;
 
-        // Writes are admin-only: lock every control for read-only visitors.
+        // Writes need a sign-in: lock every control for read-only visitors.
         if (!isWritable()) {
             grid.querySelectorAll("input, button").forEach(el => {
                 el.disabled = true;
@@ -609,17 +671,32 @@
         evaluateRedirection();
     }
 
-    function renderEventBar() {
-        // Current event label + description
-        document.getElementById("currentEventLabel").textContent =
-            `${state.currentEvent.name} · ${state.currentEvent.date}`;
-        document.getElementById("currentEventDescription").textContent =
-            state.currentEvent.description || "";
+    let eventVenueOptionsSignature = "";
 
-        // Preset buttons
+    function renderEventBar() {
+        const current = selectedEvent();
+
+        // Current event: name, date, the venue it runs in, and its description.
+        document.getElementById("currentEventLabel").textContent = current
+            ? `${current.name} · ${current.event_date}`
+            : (state.live ? "No events scheduled yet" : "Events unavailable");
+
+        const venueLine = document.getElementById("currentEventVenue");
+        if (current) {
+            venueLine.innerHTML = current.venue_name
+                ? `<i class="fas fa-location-dot mr-1"></i>Happening in <strong>${esc(current.venue_name)}</strong>`
+                : `<i class="fas fa-location-dot mr-1"></i>Not assigned to a venue yet`;
+        } else {
+            venueLine.textContent = state.live ? "Create an event and pick the venue it runs in." : "";
+        }
+        document.getElementById("currentEventDescription").textContent = current
+            ? (current.description || "")
+            : "";
+
+        // Selector buttons — one per event, showing its date and venue.
         eventSelector.innerHTML = "";
-        state.availableEvents.forEach(ev => {
-            const active = ev.id === state.currentEvent.id;
+        state.events.forEach(ev => {
+            const active = current && ev.id === current.id;
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = active
@@ -627,20 +704,36 @@
                 : "text-left bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-3 py-2 rounded-lg transition border border-gray-200";
             btn.innerHTML = `
                 <div class="font-bold">${esc(ev.name)}</div>
-                <div class="text-xs ${active ? "text-purple-100" : "text-gray-500"}">${esc(ev.date)}</div>`;
+                <div class="text-xs ${active ? "text-purple-100" : "text-gray-500"}">${esc(ev.event_date)}
+                    ${ev.venue_name ? " · " + esc(ev.venue_name) : ""}</div>`;
             btn.addEventListener("click", () => {
-                state.currentEvent = ev;
-                render();
+                state.currentEventId = ev.id;
+                renderEventBar();
             });
             eventSelector.appendChild(btn);
         });
+
+        renderEventVenueOptions();
+    }
+
+    /** Keeps the editor's venue dropdown in sync with the venues on screen. */
+    function renderEventVenueOptions() {
+        const signature = state.venues.map(v => `${v.id}:${v.name}`).join("|");
+        if (signature === eventVenueOptionsSignature) return;
+        eventVenueOptionsSignature = signature;
+        const previous = eventEditVenue.value;
+        eventEditVenue.innerHTML = `<option value="">Not assigned to a venue</option>`
+            + state.venues.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join("");
+        if (previous && state.venues.some(v => String(v.id) === previous)) {
+            eventEditVenue.value = previous;
+        }
     }
 
     /* =================================================================
        5. STATE UPDATE HANDLERS (wired through data-action listeners)
        ================================================================= */
 
-    /** Updates the current occupancy for a zone (admin only, admin-only write). */
+    /** Updates the current occupancy for a zone (needs a signed-in user). */
     async function updateCurrent(index) {
         const input = document.getElementById(`currentInput_${index}`);
         const zone  = state.venues[index];
@@ -687,27 +780,53 @@
         render();
     }
 
-    /** Next free "Zone N" style name, so POST /venues never hits the unique-name 409. */
-    function nextZoneName() {
-        const used = new Set(state.venues.map(v => v.name.toLowerCase()));
-        let n = state.venues.length + 1;
-        while (used.has(`zone ${n}`.toLowerCase())) n += 1;
-        return `Zone ${n}`;
-    }
-
-    /** Adds a venue with POST /venues (admin only). */
+    /** Adds a venue with POST /venues (signed-in users). */
     async function addVenue() {
         if (blockWrite("Adding a venue")) return;
+
+        const nameInput = document.getElementById("newVenueName");
+        const capacityInput = document.getElementById("newVenueCapacity");
+        const name = nameInput.value.trim();
+        const capacity = Math.max(1, parseInt(capacityInput.value, 10) || 100);
+        if (!name) {
+            toast("Give the new venue a name first.", "error");
+            nameInput.focus();
+            return;
+        }
 
         try {
             const created = await apiFetch("/venues", {
                 method: "POST", auth: true,
-                body: { name: nextZoneName(), capacity: 100, occupancy: 0 }
+                body: { name, capacity, occupancy: 0 }
             });
             state.venues.push(fromApiVenue(created));
-            toast(`Created "${created.name}" on the backend.`, "success");
+            nameInput.value = "";
+            toast(`Created “${created.name}”.`, "success");
         } catch (err) {
             handleWriteError(err, "Could not create the venue");
+        }
+        render();
+    }
+
+    /** Renames a venue with PATCH /venues/{id} (signed-in users). */
+    async function renameVenue(index) {
+        const input = document.getElementById(`nameInput_${index}`);
+        const zone = state.venues[index];
+        if (!zone || !input) return;
+        if (blockWrite("Renaming a venue")) { render(); return; }
+
+        const name = input.value.trim();
+        if (!name) { toast("Enter the new venue name first.", "error"); render(); return; }
+        if (name === zone.name) { toast("That is already this venue's name.", "info"); return; }
+
+        try {
+            const updated = await apiFetch(`/venues/${zone.id}`, {
+                method: "PATCH", auth: true, body: { name }
+            });
+            Object.assign(zone, fromApiVenue(updated));
+            toast(`Venue renamed to “${updated.name}”.`, "success");
+        } catch (err) {
+            handleWriteError(err, `Could not rename “${zone.name}”`);
         }
         render();
     }
@@ -828,7 +947,7 @@
         redirectBtn.disabled = !writable || candidates.length === 0;
         hint.textContent = writable
             ? "Redirecting moves people for real: the crowded venue loses them and the chosen zone gains them."
-            : "Admin login required to move attendees between venues.";
+            : "Sign in to move attendees between venues.";
 
         // When the data is live, let the backend's redirection algorithm confirm
         // (and explain) the choice: GET /venues/{id}/suggestion.
@@ -921,65 +1040,108 @@
     }
 
     /* =================================================================
-       7. EVENT HELPERS (select / edit / create)
+       7. EVENT PROGRAMME (create / rename / delete / assign to a venue)
        ================================================================= */
-    function openEventEditor() {
-        document.getElementById("eventEditName").value = state.currentEvent.name;
-        document.getElementById("eventEditDate").value = state.currentEvent.date;
-        document.getElementById("eventEditDescription").value = state.currentEvent.description || "";
+    function openEventEditor({ isNew = false } = {}) {
+        const current = isNew ? null : selectedEvent();
+        document.getElementById("eventEditName").dataset.eventId = current ? current.id : "";
+        document.getElementById("eventEditName").value = current ? current.name : "";
+        document.getElementById("eventEditDate").value = current
+            ? current.event_date
+            : new Date().toISOString().slice(0, 10);
+        document.getElementById("eventEditDescription").value =
+            current ? (current.description || "") : "";
+        eventEditVenue.value = current && current.venue_id != null ? String(current.venue_id) : "";
         eventEditForm.classList.remove("hidden");
         document.getElementById("eventEditName").focus();
     }
 
-    function saveEventEdit(event) {
+    async function saveEventEdit(event) {
         event.preventDefault();
+        if (blockWrite("Saving the event")) return;
+
+        const eventId = document.getElementById("eventEditName").dataset.eventId;
         const name = document.getElementById("eventEditName").value.trim();
-        const date = document.getElementById("eventEditDate").value;
+        const eventDate = document.getElementById("eventEditDate").value;
         const description = document.getElementById("eventEditDescription").value.trim();
+        const venueId = eventEditVenue.value === "" ? null : Number(eventEditVenue.value);
         if (!name) { toast("Event name cannot be empty.", "error"); return; }
+        if (!eventDate) { toast("Pick a date for the event.", "error"); return; }
 
-        state.currentEvent.name = name;
-        state.currentEvent.date = date;
-        state.currentEvent.description = description;
-
-        const stored = state.availableEvents.find(ev => ev.id === state.currentEvent.id);
-        if (stored) Object.assign(stored, { name, date, description });
-
-        eventEditForm.classList.add("hidden");
-        render();
-        toast(`Event saved: ${name} · ${date}`, "success");
+        const body = { name, event_date: eventDate, description, venue_id: venueId };
+        try {
+            const saved = eventId
+                ? await apiFetch(`/events/${eventId}`, { method: "PATCH", auth: true, body })
+                : await apiFetch("/events", { method: "POST", auth: true, body });
+            state.currentEventId = saved.id;
+            eventEditForm.classList.add("hidden");
+            toast(eventId ? `Event updated: ${saved.name}` : `Event created: ${saved.name}`, "success");
+            await Promise.all([loadEvents({ silent: true }), loadVenues({ silent: true })]);
+        } catch (err) {
+            handleWriteError(err, "The event was not saved");
+        }
     }
 
     function createEvent() {
-        const id = `event_${Date.now()}`;
-        const today = new Date().toISOString().slice(0, 10);
-        const ev = { id, name: "New Event", date: today, description: "Describe this event and its expected attendance" };
-        state.availableEvents.push(ev);
-        state.currentEvent = ev;
-        render();
-        openEventEditor();
-        toast("New event created — fill in the details and save.", "info");
+        if (blockWrite("Creating an event")) return;
+        openEventEditor({ isNew: true });
+        toast("Fill in the details and pick the venue the event runs in.", "info");
+    }
+
+    /** Deletes the selected event (two clicks to confirm). */
+    async function deleteEvent(btn) {
+        const current = selectedEvent();
+        if (!current) { toast("There is no event to delete.", "error"); return; }
+        if (blockWrite("Deleting an event")) return;
+
+        if (btn && btn.dataset.armed !== "1") {
+            btn.dataset.armed = "1";
+            btn.dataset.original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check mr-1"></i>Confirm delete';
+            btn.classList.add("ring-2", "ring-red-300");
+            setTimeout(() => {
+                if (btn.isConnected) {
+                    btn.dataset.armed = "0";
+                    btn.innerHTML = btn.dataset.original;
+                    btn.classList.remove("ring-2", "ring-red-300");
+                }
+            }, 2600);
+            return;
+        }
+
+        try {
+            await apiFetch(`/events/${current.id}`, { method: "DELETE", auth: true });
+            toast(`Deleted event “${current.name}”.`, "success");
+            state.currentEventId = null;
+            await Promise.all([loadEvents({ silent: true }), loadVenues({ silent: true })]);
+        } catch (err) {
+            handleWriteError(err, `Could not delete “${current.name}”`);
+        }
     }
 
     /* =================================================================
        8. FOOTER / FEEDBACK
        ================================================================= */
     function updateFooter() {
-        const eventLabel = `${state.currentEvent.name} · ${state.currentEvent.date}`;
+        const current = selectedEvent();
+        const eventLabel = current ? `${current.name} · ${current.event_date}` : "No event scheduled";
         const redCount = state.venues.filter(z => statusBand(z, getPercentage(z)) === "critical").length;
+        const staffLine = state.staff
+            ? ` · staff deployed ${state.staff.deployed}/${state.staff.pool_size}`
+            : "";
         const mode = state.live
-            ? `<span class="text-xs font-bold uppercase ${auth.isAdmin ? "text-emerald-600" : "text-amber-600"}">${auth.isAdmin ? "live · admin" : "live · read-only"}</span>`
-            : '<span class="text-xs font-bold uppercase text-slate-500">demo mode</span>';
+            ? `<span class="text-xs font-bold uppercase ${auth.isLoggedIn ? "text-emerald-600" : "text-amber-600"}">${auth.isLoggedIn ? `live · ${esc(auth.role)}` : "live · read-only"}</span>`
+            : '<span class="text-xs font-bold uppercase text-slate-500">offline</span>';
 
         let summary;
         if (state.venues.length === 0) {
-            summary = `<span class="font-semibold">${esc(eventLabel)}</span> — no venues in view yet. Add one below${state.live ? " or refresh live data" : ""}.`;
+            summary = `<span class="font-semibold">${esc(eventLabel)}</span> — no venues in view yet. Add one below${state.live ? "" : " once the API is running"}.`;
         } else if (redCount > 0) {
             summary = `<i class="fas fa-exclamation-triangle mr-1 text-red-500"></i><span class="font-semibold">${esc(eventLabel)}</span> — ${redCount} zone(s) at critical capacity. Redirection engine fired.`;
         } else {
             summary = `<i class="fas fa-check-circle mr-1 text-green-500"></i><span class="font-semibold">${esc(eventLabel)}</span> — all zones within safe limits.`;
         }
-        footerText.innerHTML = `${summary} ${mode}`;
+        footerText.innerHTML = `${summary}${staffLine} ${mode}`;
     }
 
     function updateClock() {
@@ -993,31 +1155,39 @@
     function renderConnection() {
         if (state.live) {
             connDot.className = "h-2.5 w-2.5 rounded-full bg-emerald-400";
-            connText.textContent = auth.username
-                ? `Connected · ${state.venues.length} venue(s) · signed in as ${auth.username} (${auth.role})`
-                : `Connected · ${state.venues.length} venue(s) · not signed in`;
+            connText.textContent = `Connected · ${state.venues.length} venue(s) · ${state.events.length} event(s)`
+                + (auth.isLoggedIn ? ` · signed in as ${auth.username}` : "");
         } else {
             connDot.className = "h-2.5 w-2.5 rounded-full bg-amber-400";
-            connText.textContent = "Backend offline — running on local demo data";
+            connText.textContent = "Backend offline — start the API to manage venues";
         }
-        loginBtn.classList.toggle("hidden", Boolean(auth.token));
-        logoutBtn.classList.toggle("hidden", !auth.token);
 
-        // Read-only vs admin mode notice
+        // Account area: chip + switch account when signed in, form when signed out.
+        const signedIn = auth.isLoggedIn;
+        accountChip.classList.toggle("hidden", !signedIn);
+        accountChip.classList.toggle("flex", signedIn);
+        accountLabel.textContent = signedIn ? `${auth.username} · ${auth.role}` : "";
+        loginForm.classList.toggle("hidden", signedIn);
+        loginForm.classList.toggle("flex", !signedIn);
+        switchAccountBtn.classList.toggle("hidden", !signedIn);
+        logoutBtn.classList.toggle("hidden", !signedIn);
+        loginBtn.disabled = false;
+
+        // Read-only vs signed-in notice
         const notice = document.getElementById("modeNotice");
         const noticeText = document.getElementById("modeNoticeText");
         const inner = notice.querySelector("div");
         if (!state.live) {
             inner.className = "container mx-auto px-4 py-2 bg-amber-100 text-amber-900 border-b border-amber-300";
-            noticeText.innerHTML = '<i class="fas fa-plug mr-2"></i>Backend offline — read-only demo data. Start the API to enable editing.';
+            noticeText.innerHTML = '<i class="fas fa-plug mr-2"></i>Backend offline — read-only. Start the API to edit venues, events and staff.';
             notice.classList.remove("hidden");
-        } else if (!auth.isAdmin) {
+        } else if (!signedIn) {
             inner.className = "container mx-auto px-4 py-2 bg-amber-100 text-amber-900 border-b border-amber-300";
-            noticeText.innerHTML = '<i class="fas fa-lock mr-2"></i>Read-only mode — sign in as <strong>admin / admin123</strong> to edit venues or redirect crowds.';
+            noticeText.innerHTML = '<i class="fas fa-lock mr-2"></i>Read-only view — sign in to edit venues, events or deploy staff.';
             notice.classList.remove("hidden");
         } else {
             inner.className = "container mx-auto px-4 py-2 bg-emerald-100 text-emerald-900 border-b border-emerald-300";
-            noticeText.innerHTML = '<i class="fas fa-unlock mr-2"></i>Admin mode — venue edits and crowd redirections are saved to the backend.';
+            noticeText.innerHTML = `<i class="fas fa-unlock mr-2"></i>Signed in as <strong>${esc(auth.username)}</strong> — venue, event and staff changes are saved to the backend.`;
             notice.classList.remove("hidden");
         }
     }
@@ -1038,15 +1208,52 @@
             state.venues = (venues || []).map(fromApiVenue);
             state.live = true;
             lastUpdatedEl.innerHTML =
-                `<i class="fas fa-sync-alt mr-1"></i>Updated ${new Date().toLocaleTimeString()} from GET /venues`;
-            if (!silent) toast(`Loaded ${state.venues.length} live venue(s) from the backend.`, "success");
+                `<i class="fas fa-sync-alt mr-1"></i>Updated ${new Date().toLocaleTimeString()}`;
+            if (!silent) toast(`Loaded ${state.venues.length} venue(s) from the backend.`, "success");
             render();
         } catch (err) {
             state.live = false;
-            if (!silent) toast(`Live data unavailable (${err.message}). Showing local demo venues.`, "warn");
+            if (!silent) toast(`Live data unavailable (${err.message}).`, "warn");
             render();
         }
         renderConnection();
+    }
+
+    async function loadEvents({ silent = false } = {}) {
+        try {
+            state.events = (await apiFetch("/events")) || [];
+            if (state.currentEventId != null
+                && !state.events.some(ev => ev.id === state.currentEventId)) {
+                state.currentEventId = null;
+            }
+            if (!silent && state.events.length) {
+                toast(`Loaded ${state.events.length} event(s) from the programme.`, "success");
+            }
+        } catch (err) {
+            state.events = [];
+            if (!silent) toast(`Event programme unavailable (${err.message}).`, "warn");
+        }
+        render();
+        renderConnection();
+    }
+
+    async function loadStaff({ silent = false } = {}) {
+        try {
+            state.staff = await apiFetch("/staff");
+        } catch (err) {
+            state.staff = null;
+            if (!silent) toast(`Staff data unavailable (${err.message}).`, "warn");
+        }
+        render();
+    }
+
+    /** Refresh everything the dashboard shows. */
+    async function loadAll() {
+        await Promise.all([
+            loadVenues({ silent: true }),
+            loadEvents({ silent: true }),
+            loadStaff({ silent: true })
+        ]);
     }
 
     function handleLogin(event) {
@@ -1055,22 +1262,50 @@
         const password = document.getElementById("loginPassword").value;
         if (!username || !password) { toast("Enter a username and password.", "error"); return; }
 
+        loginBtn.disabled = true;
         apiFetch("/auth/login", { method: "POST", body: { username, password } })
             .then(data => {
                 auth.save(data);
-                toast(`Signed in as ${data.username} (${data.role}). Admin writes are now persisted.`, "success");
+                document.getElementById("loginPassword").value = "";
+                toast(`Signed in as ${data.username} (${data.role}).`, "success");
                 renderConnection();
                 render();
-                return loadVenues({ silent: true });
+                return Promise.all([
+                    loadVenues({ silent: true }),
+                    loadEvents({ silent: true }),
+                    loadStaff({ silent: true })
+                ]);
             })
-            .catch(err => toast(`Login failed: ${err.message}`, "error"));
+            .catch(err => toast(`Sign-in failed: ${err.message}`, "error"))
+            .finally(() => { loginBtn.disabled = false; renderConnection(); });
     }
 
     function handleLogout() {
         auth.clear();
-        toast("Signed out. The dashboard is read-only until you sign in as admin again.", "info");
+        toast("Signed out — the dashboard is read-only until you sign in again.", "info");
         renderConnection();
         render();
+    }
+
+    /** Show the sign-in form again while staying signed in as the old account. */
+    function switchAccount() {
+        loginForm.classList.remove("hidden");
+        loginForm.classList.add("flex");
+        document.getElementById("loginUsername").focus();
+    }
+
+    /**
+     * The workspace opens signed in as the standard operator account, so the
+     * dashboard is usable straight away; signing out stays read-only.
+     */
+    async function ensureDefaultSession() {
+        if (auth.isLoggedIn) return;
+        try {
+            const data = await apiFetch("/auth/login", {
+                method: "POST", body: { username: "user", password: "user123" }
+            });
+            auth.save(data);
+        } catch (_) { /* stay signed out — the notice explains what is read-only */ }
     }
 
     /* =================================================================
@@ -1084,6 +1319,7 @@
             switch (trigger.dataset.action) {
                 case "update-current":  updateCurrent(index); break;
                 case "update-capacity": updateCapacity(index); break;
+                case "rename-venue":    renameVenue(index); break;
                 case "delete-venue":    deleteVenue(index, trigger); break;
             }
         });
@@ -1091,17 +1327,22 @@
 
     document.getElementById("addVenueBtn").addEventListener("click", addVenue);
     document.getElementById("clearVenuesBtn").addEventListener("click", (e) => clearAllVenues(e.currentTarget));
-    document.getElementById("refreshBtn").addEventListener("click", () => loadVenues());
-    document.getElementById("loginForm").addEventListener("submit", handleLogin);
+    document.getElementById("refreshBtn").addEventListener("click", loadAll);
+    loginForm.addEventListener("submit", handleLogin);
     document.getElementById("redirectBtn").addEventListener("click", performRedirect);
     logoutBtn.addEventListener("click", handleLogout);
-    document.getElementById("editEventBtn").addEventListener("click", openEventEditor);
+    switchAccountBtn.addEventListener("click", switchAccount);
+    document.getElementById("editEventBtn").addEventListener("click", () => openEventEditor());
     document.getElementById("newEventBtn").addEventListener("click", createEvent);
+    document.getElementById("deleteEventBtn").addEventListener("click", (e) => deleteEvent(e.currentTarget));
     eventEditForm.addEventListener("submit", saveEventEdit);
     document.getElementById("eventEditCancel").addEventListener("click", () => eventEditForm.classList.add("hidden"));
+    document.getElementById("newVenueName").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addVenue(); }
+    });
 
     (async function boot() {
-        render();                       // paint demo/local state immediately
+        render();                       // paint the shell immediately
         renderConnection();
         renderRedirectLog();
         updateClock();
@@ -1109,7 +1350,13 @@
 
         const online = await resolveApiBase();
         if (online) {
-            await loadVenues({ silent: true });
+            await ensureDefaultSession();
+            await Promise.all([
+                loadVenues({ silent: true }),
+                loadEvents({ silent: true }),
+                loadStaff({ silent: true })
+            ]);
+            renderConnection();
         } else {
             state.live = false;
             render();

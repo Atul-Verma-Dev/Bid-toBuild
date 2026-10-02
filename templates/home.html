@@ -12,7 +12,7 @@
 
     <!-- ===================== HEADER ===================== -->
     <header class="bg-gradient-to-r from-blue-900 via-indigo-800 to-purple-800 shadow-2xl">
-        <div class="container mx-auto px-6 py-10">
+        <div class="container mx-auto px-6 py-12">
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                 <div>
                     <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight flex items-center gap-3">
@@ -27,12 +27,11 @@
                     <div id="apiStatus"
                          class="inline-flex items-center gap-3 rounded-full border border-slate-500/50 bg-slate-900/40 px-4 py-2 text-sm">
                         <span id="apiStatusDot" class="h-2.5 w-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
-                        <span id="apiStatusText" class="font-semibold">Checking backend…</span>
+                        <span id="apiStatusText" class="font-semibold">Connecting…</span>
                     </div>
-                    <a href="/docs"
-                       class="text-sm text-cyan-200 hover:text-white underline underline-offset-4">
-                        <i class="fas fa-book mr-1"></i>Open API docs (Swagger)
-                    </a>
+                    <p class="text-xs text-blue-200/80">
+                        <i class="fas fa-shield-halved mr-1"></i>Operations console for venue and event staff
+                    </p>
                 </div>
             </div>
         </div>
@@ -54,8 +53,8 @@
                     <h3 class="text-xl font-bold">Live Dashboard</h3>
                 </div>
                 <p class="mt-4 text-slate-300 text-sm leading-relaxed">
-                    Zone cards with editable occupancy and capacity, green / yellow / red status,
-                    and the flashing redirection banner when a zone hits capacity.
+                    Zone cards with editable occupancy, capacity and names, the event running in
+                    each venue, and the flashing redirection banner when a zone hits capacity.
                 </p>
                 <p class="mt-5 text-blue-300 font-semibold text-sm">
                     Open dashboard <i class="fas fa-arrow-right ml-1"></i>
@@ -73,7 +72,7 @@
                 </div>
                 <p class="mt-4 text-slate-300 text-sm leading-relaxed">
                     Command-center view: overcrowding alerts, crowd redirection recommendations,
-                    staff deployment, and a live crowd simulation with admin login.
+                    live staff deployment with a shared headcount pool, and a crowd simulation.
                 </p>
                 <p class="mt-5 text-amber-300 font-semibold text-sm">
                     Open monitor <i class="fas fa-arrow-right ml-1"></i>
@@ -102,7 +101,7 @@
         <!-- ===================== LIVE SNAPSHOT ===================== -->
         <section class="mt-12">
             <h2 class="text-sm font-bold uppercase tracking-[0.25em] text-slate-400 mb-6">
-                Live snapshot <span id="snapshotTime" class="ml-2 normal-case tracking-normal text-slate-500 font-mono text-xs"></span>
+                Live venues <span id="snapshotTime" class="ml-2 normal-case tracking-normal text-slate-500 font-mono text-xs"></span>
             </h2>
             <div id="snapshotGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-slate-400 text-sm">
@@ -110,25 +109,15 @@
                 </div>
             </div>
         </section>
-
-        <!-- ===================== DEMO CREDENTIALS ===================== -->
-        <section class="mt-12 rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
-            <h2 class="text-lg font-bold flex items-center gap-2">
-                <i class="fas fa-key text-yellow-300"></i>Demo accounts
-            </h2>
-            <p class="mt-2 text-slate-300 text-sm">
-                Writes (add / edit / delete venues) need an admin token. Sign in from the
-                dashboard strip or the zone monitor login button.
-            </p>
-            <div class="mt-4 flex flex-wrap gap-3 font-mono text-sm">
-                <span class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">admin / admin123 <span class="text-slate-500">(admin)</span></span>
-                <span class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">user / user123 <span class="text-slate-500">(read-only)</span></span>
-            </div>
-        </section>
     </main>
 
     <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-        © 2026 OmniView · Smart Event Crowd Management
+        <p>© 2026 OmniView · Smart Event Crowd Management</p>
+        <p class="mt-2">
+            <a href="/docs" class="text-slate-400 hover:text-slate-200 underline underline-offset-4">API documentation</a>
+            <span class="mx-2 text-slate-700">·</span>
+            <a href="/health" class="text-slate-400 hover:text-slate-200 underline underline-offset-4">Service health</a>
+        </p>
     </footer>
 
     <script>
@@ -141,52 +130,91 @@
             OVERCROWDED: "border-red-500/50 bg-red-500/10 text-red-300"
         };
 
+        const BAR_COLOR = {
+            NORMAL: "bg-emerald-500",
+            MODERATE: "bg-yellow-500",
+            WARNING: "bg-orange-500",
+            CRITICAL: "bg-red-500",
+            OVERCROWDED: "bg-red-500"
+        };
+
+        const esc = (value) => String(value == null ? "" : value)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
         function setApiStatus(online, text) {
             document.getElementById("apiStatusDot").className =
                 "h-2.5 w-2.5 rounded-full " + (online ? "bg-emerald-400" : "bg-red-500");
             document.getElementById("apiStatusText").textContent = text;
         }
 
-        function renderSnapshot(venues) {
+        function staffFor(venueId, staff) {
+            if (!staff || !Array.isArray(staff.per_venue)) return 0;
+            const entry = staff.per_venue.find(z => z.venue_id === venueId);
+            return entry ? entry.staff : 0;
+        }
+
+        function renderSnapshot(venues, staff) {
             const grid = document.getElementById("snapshotGrid");
             if (!Array.isArray(venues) || venues.length === 0) {
                 grid.innerHTML = `<div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-slate-400 text-sm">
-                    No venues yet. Open the dashboard and add one.</div>`;
+                    No venues yet. Add one from the live dashboard.</div>`;
                 return;
             }
-            grid.innerHTML = venues.map(v => `
+            grid.innerHTML = venues.map(v => {
+                const badge = STATUS_CLASS[v.status] || "border-slate-700 text-slate-300";
+                const event = v.current_event;
+                const headcount = staffFor(v.id, staff);
+                return `
                 <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
                     <div class="flex items-center justify-between gap-3">
-                        <span class="font-semibold">${v.name}</span>
-                        <span class="rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${STATUS_CLASS[v.status] || "border-slate-700 text-slate-300"}">
-                            ${v.status}
+                        <span class="font-semibold">${esc(v.name)}</span>
+                        <span class="rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${badge}">
+                            ${esc(v.status)}
                         </span>
                     </div>
+
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                        <span class="rounded-full border px-2 py-0.5 ${event
+                            ? "border-purple-500/50 bg-purple-500/10 text-purple-200"
+                            : "border-slate-700 text-slate-500"}">
+                            <i class="fas fa-calendar-day mr-1"></i>${event ? esc(event.name) : "No event scheduled"}
+                        </span>
+                        ${headcount > 0
+                            ? `<span class="rounded-full border border-slate-600 text-slate-300 px-2 py-0.5">
+                                   <i class="fas fa-user-shield mr-1"></i>${headcount} staff</span>`
+                            : ""}
+                    </div>
+
                     <div class="mt-3 flex items-end justify-between">
                         <span class="text-2xl font-bold font-mono">${v.occupancy_percentage}%</span>
                         <span class="text-xs text-slate-400 font-mono">${v.occupancy} / ${v.capacity}</span>
                     </div>
                     <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                        <div class="h-full rounded-full ${v.status === "NORMAL" ? "bg-emerald-500" : v.status === "MODERATE" ? "bg-yellow-500" : "bg-red-500"}"
+                        <div class="h-full rounded-full ${BAR_COLOR[v.status] || "bg-slate-500"}"
                              style="width: ${Math.min(v.occupancy_percentage, 100)}%"></div>
                     </div>
-                </div>
-            `).join("");
+                </div>`;
+            }).join("");
             document.getElementById("snapshotTime").textContent = "updated " + new Date().toLocaleTimeString();
         }
 
         async function loadSnapshot() {
             try {
-                const res = await fetch("/venues");
-                if (!res.ok) throw new Error("HTTP " + res.status);
-                const venues = await res.json();
-                renderSnapshot(venues);
-                setApiStatus(true, `Backend online · ${venues.length} venue(s)`);
+                const [venuesRes, staffRes] = await Promise.all([
+                    fetch("/venues"),
+                    fetch("/staff").catch(() => null)
+                ]);
+                if (!venuesRes.ok) throw new Error("HTTP " + venuesRes.status);
+                const venues = await venuesRes.json();
+                const staff = staffRes && staffRes.ok ? await staffRes.json() : null;
+                renderSnapshot(venues, staff);
+                setApiStatus(true, `Online · ${venues.length} venue(s) live`);
             } catch (err) {
                 setApiStatus(false, "Backend offline");
                 document.getElementById("snapshotGrid").innerHTML = `
                     <div class="rounded-xl border border-red-900/60 bg-red-950/40 p-5 text-red-200 text-sm">
-                        Could not reach <code>GET /venues</code> — is uvicorn running? (${err.message})
+                        Could not reach <code>GET /venues</code> — is the server running? (${esc(err.message)})
                     </div>`;
             }
         }

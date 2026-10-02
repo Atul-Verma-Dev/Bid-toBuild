@@ -1571,3 +1571,78 @@
   color: var(--zone-warning);
   font-weight: 600;
 }
+
+/* ============================================================
+   STAFF DEPLOYMENT — live backend counts, recall, event chips
+   ============================================================ */
+
+.zone-monitor-module__staff-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.zone-monitor-module__staff-zone-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--zone-muted);
+  border: 1px dashed var(--zone-border);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.zone-monitor-module__staff-zone-event--assigned {
+  color: #d8b4fe;
+  border: 1px solid #7c3aed;
+  background: rgba(124, 58, 237, 0.16);
+}
+
+.zone-monitor-module__staff-zone-headcount {
+  font-weight: 800;
+  color: var(--zone-safe);
+}
+
+.zone-monitor-module__recall-button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  border: 1px solid var(--zone-border);
+  background: transparent;
+  color: var(--zone-muted);
+  transition: color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.zone-monitor-module__recall-button:hover:not(:disabled) {
+  color: var(--zone-warning);
+  border-color: var(--zone-warning);
+}
+
+.zone-monitor-module__recall-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zone-monitor-module__zone-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--zone-muted);
+  border: 1px dashed var(--zone-border);
+}
+
+.zone-monitor-module__zone-event--assigned {
+  color: #d8b4fe;
+  border: 1px solid #7c3aed;
+  background: rgba(124, 58, 237, 0.16);
+}

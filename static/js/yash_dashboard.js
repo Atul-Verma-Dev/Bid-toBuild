@@ -47,23 +47,9 @@
       distribution: null,
       comparison: null,
     },
-    // Demo historical data for the line chart (explicit demo dataset)
-    // This is NOT live data — it is clearly labeled as Demonstration History.
-    // Fixed timestamped records for 6-hour window, 10-minute intervals.
-    demoHistory: (function () {
-      const history = [];
-      const now = Date.now();
-      const baseTotal = 82000;
-      for (let i = 35; i >= 0; i--) {
-        const timestamp = new Date(now - i * 600000).toISOString();
-        const noise = Math.sin(i / 5) * 1500 + Math.cos(i / 2.5) * 1000;
-        history.push({
-          timestamp,
-          total: Math.round(baseTotal + noise),
-        });
-      }
-      return history;
-    })(),
+    // Crowd trend history built from the live polls of this session.
+    // One sample per refresh cycle (5s), oldest first, capped below.
+    sessionHistory: [],
     // Test counters
     testHistoryFilterCounts: {},
     // Timer reference for the 5-second refresh cycle
@@ -79,18 +65,25 @@
     // API base URL — "" means same origin (FastAPI serves this page).
     // apiGet() below falls back to http://127.0.0.1:8000 when that fails.
     apiBase: '',
-    // Refresh interval in milliseconds (5 seconds per requirements)
+    // Refresh interval in milliseconds (5 seconds)
     refreshIntervalMs: 5000,
-    // Demo data fallback when the backend is unreachable
-    demoZones: [
-      { id: 1, name: 'Main Stage', capacity: 20000, current_count: 14820, status: 'warning' },
-      { id: 2, name: 'Food Court', capacity: 12000, current_count: 9640, status: 'critical' },
-      { id: 3, name: 'Gaming Arena', capacity: 8000, current_count: 6210, status: 'warning' },
-      { id: 4, name: 'Registration Area', capacity: 5000, current_count: 3180, status: 'safe' },
-      { id: 5, name: 'Exhibition Hall', capacity: 28000, current_count: 21450, status: 'warning' },
-      { id: 6, name: 'VIP Lounge', capacity: 1500, current_count: 1240, status: 'warning' },
-    ],
+    // How many trend samples to keep (≈35 minutes at one sample per 5s).
+    maxHistorySamples: 420,
   };
+
+  /** Records the current total attendance so the trend chart grows from real data. */
+  function recordSample(total) {
+    const total_ = ensureNumber(total, 0);
+    const history = state.sessionHistory;
+    const last = history[history.length - 1];
+    const stamp = Date.now();
+    // Ignore duplicate samples (same total within the same second).
+    if (last && last.total === total_ && stamp - new Date(last.timestamp).getTime() < 2000) return;
+    history.push({ timestamp: new Date(stamp).toISOString(), total: total_ });
+    if (history.length > CONFIG.maxHistorySamples) {
+      history.splice(0, history.length - CONFIG.maxHistorySamples);
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Status mapping — configurable, mirrors backend classifications
@@ -432,7 +425,7 @@
                   source: {
                     type: 'label',
                     xValue: 'Source',
-                    yValue: 'Demonstration History',
+                    yValue: 'Live session samples',
                     position: 'bottom',
                     backgroundColor: 'rgba(30, 48, 80, 0.75)',
                     borderColor: 'rgba(30, 48, 80, 0.5)',
@@ -506,7 +499,7 @@
                   source: {
                     type: 'label',
                     xValue: 'Source',
-                    yValue: 'Demonstration History',
+                    yValue: 'Live session samples',
                     position: 'bottom',
                     backgroundColor: 'rgba(30, 48, 80, 0.75)',
                     borderColor: 'rgba(30, 48, 80, 0.5)',
@@ -564,11 +557,13 @@
     // -------------------------------------------------------------------------
     // CHART 3: Crowd Occupancy Trends (line chart)
     // -------------------------------------------------------------------------
-    // Source: DEMO_HISTORY (explicitly labeled as Demonstration History).
-    // The backend has no historical occupancy endpoint.
+    // Source: live samples collected while this page is open (one per poll).
+    // The backend has no historical occupancy endpoint, so nothing is faked.
     const trendCanvas = root.querySelector('#yash-chart-trend');
     if (trendCanvas) {
-      const currentHistory = history && history.length > 0 ? history : state.demoHistory;
+      const currentHistory = Array.isArray(history) && history.length > 0
+        ? history
+        : state.sessionHistory;
       const labels = currentHistory.map((e) => {
         const d = new Date(e.timestamp);
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -621,7 +616,7 @@
                   source: {
                     type: 'label',
                     xValue: 'Source',
-                    yValue: 'Demonstration History',
+                    yValue: 'Live session samples',
                     position: 'bottom',
                     backgroundColor: 'rgba(30, 48, 80, 0.75)',
                     borderColor: 'rgba(30, 48, 80, 0.5)',
@@ -703,6 +698,8 @@
       const stats = computeStats(zones, announcements);
 
       // Attach timestamps for display
+      recordSample(stats.totalAttendees);
+
       const payload = {
         zones: zones.map((z) => ({
           id: z.id,
@@ -770,7 +767,7 @@
     const filterMinutes = { '30m': 30, '1h': 60, '6h': 360 }[filter] || 60;
     const cutoff = now - filterMinutes * 60000;
 
-    state.demoHistory.forEach((entry) => {
+    state.sessionHistory.forEach((entry) => {
       const ts = new Date(entry.timestamp).getTime();
       if (ts >= cutoff) {
         filtered.push(entry);

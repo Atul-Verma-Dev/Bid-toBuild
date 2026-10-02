@@ -5,6 +5,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"  # HH:MM, 24-hour
+DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"  # YYYY-MM-DD
 
 
 class Role(str, Enum):
@@ -62,6 +63,14 @@ class OccupancyUpdate(BaseModel):
     occupancy: int = Field(ge=0)
 
 
+class EventBrief(BaseModel):
+    """Compact event attached to a venue so every page can show what is on there."""
+
+    id: int
+    name: str
+    event_date: str
+
+
 class VenueOut(BaseModel):
     id: int
     name: str
@@ -75,6 +84,56 @@ class VenueOut(BaseModel):
     is_active: bool
     created_at: str
     updated_at: str
+    current_event: EventBrief | None = None
+
+
+# --------------------------------------------------------------------------- events
+
+
+class EventCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    event_date: str = Field(pattern=DATE_PATTERN)
+    description: str = Field(default="", max_length=300)
+    venue_id: int | None = None
+
+
+class EventUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    event_date: str | None = Field(default=None, pattern=DATE_PATTERN)
+    description: str | None = Field(default=None, max_length=300)
+    venue_id: int | None = None
+
+
+class EventOut(BaseModel):
+    id: int
+    name: str
+    event_date: str
+    description: str
+    venue_id: int | None
+    venue_name: str | None
+    created_at: str
+    updated_at: str
+
+
+# ---------------------------------------------------------------------------- staff
+
+
+class StaffDeploymentCreate(BaseModel):
+    venue_id: int
+    count: int = Field(default=2, ge=1, le=50)
+
+
+class StaffZoneOut(BaseModel):
+    venue_id: int
+    venue_name: str
+    staff: int
+
+
+class StaffOverview(BaseModel):
+    pool_size: int
+    deployed: int
+    available: int
+    per_venue: list[StaffZoneOut]
 
 
 class RedirectSuggestion(BaseModel):

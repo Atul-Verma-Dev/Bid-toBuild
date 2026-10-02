@@ -3,7 +3,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from auth import hash_password
 
@@ -65,6 +65,24 @@ CREATE TABLE IF NOT EXISTS announcements (
     active     INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    event_date  TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    venue_id    INTEGER REFERENCES venues(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS staff_deployments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue_id    INTEGER NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    count       INTEGER NOT NULL CHECK (count > 0),
+    deployed_by TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
 """
 
 
@@ -76,6 +94,7 @@ def init_db() -> None:
         _seed_users(connection)
         _seed_venues(connection)
         _seed_announcements(connection)
+        _seed_events(connection)
         connection.commit()
     finally:
         connection.close()
@@ -112,6 +131,50 @@ def _seed_venues(connection: sqlite3.Connection) -> None:
            (name, capacity, occupancy, opening_time, closing_time, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         [(*venue, timestamp, timestamp) for venue in venues],
+    )
+
+
+def _seed_events(connection: sqlite3.Connection) -> None:
+    """Seed a program of events, the first one happening today at a live venue."""
+    if connection.execute("SELECT COUNT(*) FROM events").fetchone()[0]:
+        return
+    timestamp = now_iso()
+    venue_ids = {
+        row["name"]: row["id"]
+        for row in connection.execute("SELECT id, name FROM venues").fetchall()
+    }
+    today = date.today()
+    events = [
+        (
+            "OmniHack 2026",
+            today.isoformat(),
+            "2-day tech hackathon | 1,500 attendees",
+            venue_ids.get("Main Auditorium"),
+        ),
+        (
+            "TechDay Summit",
+            (today + timedelta(days=45)).isoformat(),
+            "Industry conference | 800 attendees",
+            venue_ids.get("Tech Expo Hall"),
+        ),
+        (
+            "Genomics Workshop",
+            (today + timedelta(days=90)).isoformat(),
+            "Lab & presentation day | 250 attendees",
+            venue_ids.get("Workshop Arena"),
+        ),
+        (
+            "Opening Night Gala",
+            (today + timedelta(days=1)).isoformat(),
+            "Evening gala dinner | 400 attendees",
+            venue_ids.get("Central Plaza"),
+        ),
+    ]
+    connection.executemany(
+        """INSERT INTO events
+           (name, event_date, description, venue_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [(*event, timestamp, timestamp) for event in events],
     )
 
 

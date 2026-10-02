@@ -3,10 +3,14 @@
 
    Connects to the Smart Event Crowd Management backend:
      GET   /venues                  (public) every 10s
-     POST  /auth/login              (demo auth, token in localStorage)
-     PATCH /venues/{id}/occupancy   (admin, used by the crowd simulation)
+     GET   /events                  (public) — the event on in each zone
+     GET   /staff                   (public) — pool + per-zone headcount
+     POST  /staff/deployments       (signed in) — deploy staff to a zone
+     DELETE /staff/deployments/{id} (signed in) — recall a zone's staff
+     POST  /auth/login              (token kept in localStorage)
+     PATCH /venues/{id}/occupancy   (signed in, used by the crowd simulation)
 
-   Falls back to a small local demo dataset when the API is offline.
+   Falls back to a small local dataset when the API is offline.
    ============================================================ */
 
 (function () {
@@ -49,7 +53,8 @@
     simulationZoneId: null,
     growth: {},                 // zone id -> last simulated delta
     acknowledged: loadAcks(),   // { zoneId: severity already dismissed }
-    staff: { total: STAFF_POOL_SIZE, available: STAFF_POOL_SIZE, deployed: 0 },
+    events: [],                 // GET /events — the event running in each zone
+    staff: null,                // GET /staff — pool totals + per-zone headcount
     live: false,
     lastSync: null
   };
@@ -209,9 +214,34 @@
     return String(zone.status || SEVERITY_LABEL[severity(zone)]).toUpperCase();
   }
 
-  /** Occupancy changes are admin-only: they need a live backend and an admin token. */
+  /** Occupancy changes need a live backend plus a signed-in user. */
   function isWritable() {
-    return state.live && auth.isAdmin;
+    return state.live && Boolean(auth.token);
+  }
+
+  /** Deploying or recalling staff is an operator action: any signed-in user. */
+  function canDeployStaff() {
+    return state.live && Boolean(auth.token);
+  }
+
+  /** The staff pool from the backend, with a local fallback until it loads. */
+  function staffOverview() {
+    return state.staff || {
+      pool_size: STAFF_POOL_SIZE,
+      deployed: 0,
+      available: STAFF_POOL_SIZE,
+      per_venue: []
+    };
+  }
+
+  function staffForZone(zoneId) {
+    const entry = staffOverview().per_venue.find(z => z.venue_id === zoneId);
+    return entry ? entry.staff : 0;
+  }
+
+  /** The event currently scheduled inside a zone (or null). */
+  function eventForZone(zoneId) {
+    return state.events.find(ev => ev.venue_id === zoneId) || null;
   }
 
   /** Backend rule: only venues that are not busy and still have free space. */
@@ -253,6 +283,7 @@
       const level = band(zone);
       const open = zone.is_active;
       const focused = zone.id === state.focusZoneId ? " active" : "";
+      const event = eventForZone(zone.id);
 
       return `
         <article class="zone-monitor-module__card zone-monitor-module__card--${level} ${open ? "" : "zone-monitor-module__card--inactive"}${focused}"
@@ -295,6 +326,15 @@
             <span class="zone-monitor-module__hours-text">
               ${escapeHtml(zone.opening_time)}${zone.closing_time ? " - " + escapeHtml(zone.closing_time) : ""}
             </span>
+          </div>
+
+          <!-- Which event is on in this zone, and how many staff are on site -->
+          <div class="zone-monitor-module__zone-event${event ? " zone-monitor-module__zone-event--assigned" : ""}">
+            ${event
+              ? `🎪 ${escapeHtml(event.name)} · ${escapeHtml(event.event_date)}`
+              : "🎪 No event scheduled"}
+            <span aria-hidden="true">•</span>
+            👷 ${staffForZone(zone.id)} staff on site
           </div>
         </article>`;
     }).join("");
@@ -481,7 +521,7 @@
             <div class="zone-monitor-module__recommendation-actions">
               <button type="button" class="zone-monitor-module__redirect-button"
                       data-redirect-to="${rec.zone.id}"
-                      ${isWritable() ? "" : 'disabled title="Admin login required to move attendees"'}>
+                      ${isWritable() ? "" : 'disabled title="Sign in to move attendees"'}>
                 REDIRECT HERE
               </button>
             </div>
@@ -555,7 +595,7 @@
    */
   async function performRedirect(sourceId, targetId, amount, list) {
     if (!isWritable()) {
-      showToast("Only an admin can move attendees. Log in as admin first.", "error");
+      showToast("Sign in to move attendees between zones.", "error");
       renderRecommendations();
       return;
     }
@@ -630,13 +670,28 @@
     const grid = $("staff-grid");
     if (!grid) return;
 
-    const available = state.staff.available - state.staff.deployed;
+    const overview = staffOverview();
+    const writable = canDeployStaff();
+    // Staff standing in a zone that is already at its warning band or worse.
+    const busy = state.zones
+      .filter(zone => severity(zone) >= 2)
+      .reduce((total, zone) => total + staffForZone(zone.id), 0);
 
-    $("staff-summary-total").textContent = state.staff.total;
-    $("staff-summary-available").textContent = available;
-    $("staff-summary-deployed").textContent = state.staff.deployed;
-    $("staff-summary-busy").textContent = state.staff.deployed;
-    $("staff-total").textContent = `${state.staff.total} total`;
+    $("staff-summary-total").textContent = overview.pool_size;
+    $("staff-summary-available").textContent = overview.available;
+    $("staff-summary-deployed").textContent = overview.deployed;
+    $("staff-summary-busy").textContent = busy;
+    $("staff-total").textContent = `${overview.deployed} of ${overview.pool_size} deployed`;
+
+    const hint = $("staff-hint");
+    if (hint) {
+      hint.textContent = !state.live
+        ? "Start the backend to deploy staff."
+        : writable
+          ? `Signed in as ${auth.username} (${auth.role}) — deployments are saved and shared across the event.`
+          : "Sign in to deploy staff to a zone.";
+      hint.classList.toggle("is-locked", !writable);
+    }
 
     if (state.zones.length === 0) {
       grid.innerHTML = `<div class="zone-monitor-module__empty"><p class="zone-monitor-module__empty-text">No zones to staff yet.</p></div>`;
@@ -648,7 +703,10 @@
     grid.innerHTML = state.zones.map(zone => {
       const level = band(zone);
       const needsStaff = level !== "safe";
-      const canDeploy = available > 0 && needsStaff;
+      const onSite = staffForZone(zone.id);
+      const deploymentSize = Math.min(STAFF_PER_DEPLOYMENT, Math.max(overview.available, 1));
+      const canDeploy = writable && needsStaff && overview.available > 0;
+      const event = eventForZone(zone.id);
 
       return `
         <div class="zone-monitor-module__staff-zone zone-monitor-module__staff-zone--${level}" data-zone-id="${zone.id}">
@@ -659,15 +717,20 @@
             </span>
           </div>
 
+          <span class="zone-monitor-module__staff-zone-event${event ? " zone-monitor-module__staff-zone-event--assigned" : ""}">
+            ${event ? `🎪 ${escapeHtml(event.name)}` : "🎪 No event scheduled"}
+          </span>
+
           <div class="zone-monitor-module__staff-zone-meta">
             <span>Occupancy <strong>${occupancyPercentage(zone)}%</strong></span>
             <span>${zone.occupancy} / ${zone.capacity} people</span>
+            <span>On site <strong class="zone-monitor-module__staff-zone-headcount">${onSite}</strong> staff</span>
           </div>
 
           <div class="zone-monitor-module__staff-zone-body">
             <p class="zone-monitor-module__staff-recommendation">
               ${level === "critical"
-                ? "<strong>Recommended:</strong> deploy 2 staff members now."
+                ? (onSite > 0 ? "<strong>Deployed:</strong> keep 2 staff members on this zone." : "<strong>Recommended:</strong> deploy 2 staff members now.")
                 : level === "warning"
                   ? "<strong>Recommended:</strong> monitor and consider deploying staff."
                   : "No deployment needed."}
@@ -684,8 +747,12 @@
 
             <div class="zone-monitor-module__staff-actions">
               <button type="button" class="zone-monitor-module__deploy-button" data-deploy="${zone.id}"
-                      ${canDeploy ? "" : "disabled"}>
-                Deploy Staff
+                      ${canDeploy ? "" : `disabled title="${writable ? "No staff left in the pool" : "Sign in to deploy staff"}"`}>
+                Deploy ${deploymentSize} staff
+              </button>
+              <button type="button" class="zone-monitor-module__recall-button" data-recall="${zone.id}"
+                      ${writable && onSite > 0 ? "" : `disabled title="${writable ? "Nobody is deployed here" : "Sign in to recall staff"}"`}>
+                Recall
               </button>
             </div>
           </div>
@@ -695,19 +762,48 @@
     grid.querySelectorAll("[data-deploy]").forEach(btn => btn.addEventListener("click", () => {
       deployStaff(Number(btn.dataset.deploy));
     }));
+    grid.querySelectorAll("[data-recall]").forEach(btn => btn.addEventListener("click", () => {
+      recallStaff(Number(btn.dataset.recall));
+    }));
   }
 
-  function deployStaff(zoneId) {
+  /** POST /staff/deployments — persists the deployment for the whole event. */
+  async function deployStaff(zoneId) {
     const zone = state.zones.find(z => z.id === zoneId);
     if (!zone) return;
+    if (!canDeployStaff()) { showToast("Sign in to deploy staff.", "error"); return; }
 
-    const available = state.staff.available - state.staff.deployed;
-    if (available < 1) { showToast("No available staff to deploy.", "error"); return; }
+    const overview = staffOverview();
+    if (overview.available < 1) {
+      showToast("Every staff member is already deployed. Recall someone first.", "error");
+      return;
+    }
 
-    const count = Math.min(STAFF_PER_DEPLOYMENT, available);
-    state.staff.deployed += count;
-    showToast(`${count} staff member(s) deployed to ${zone.name}.`, "success");
-    renderStaff();
+    const count = Math.min(STAFF_PER_DEPLOYMENT, overview.available);
+    try {
+      state.staff = await apiFetch("/staff/deployments", {
+        method: "POST", auth: true, body: { venue_id: zone.id, count }
+      });
+      showToast(`${count} staff member(s) deployed to ${zone.name}.`, "success");
+    } catch (err) {
+      showToast(`Deployment failed: ${err.message}`, "error");
+    }
+    refreshAll();
+  }
+
+  /** DELETE /staff/deployments/{venue_id} — everyone comes back to the pool. */
+  async function recallStaff(zoneId) {
+    const zone = state.zones.find(z => z.id === zoneId);
+    if (!zone) return;
+    if (!canDeployStaff()) { showToast("Sign in to recall staff.", "error"); return; }
+
+    try {
+      state.staff = await apiFetch(`/staff/deployments/${zone.id}`, { method: "DELETE", auth: true });
+      showToast(`Recalled the staff deployed to ${zone.name}.`, "success");
+    } catch (err) {
+      showToast(`Recall failed: ${err.message}`, "error");
+    }
+    refreshAll();
   }
 
   /* ------------------------------------------------------------------
@@ -762,31 +858,31 @@
     applySimulationPermissions();
   }
 
-  /** The simulation writes real occupancy, so it is admin-only. */
+  /** The simulation writes real occupancy, so it needs a signed-in user. */
   function applySimulationPermissions() {
     const writable = isWritable();
 
     document.querySelectorAll("[data-simulation-action], #simulation-surge").forEach(btn => {
       btn.disabled = !writable;
-      btn.title = writable ? "" : "Admin login required to change occupancy.";
+      btn.title = writable ? "" : "Sign in to change occupancy.";
     });
 
     const hint = $("simulation-hint");
     if (hint) {
       hint.textContent = writable
-        ? "Admin mode — ±10 / ±50 / surge write the zone's occupancy straight to the backend."
-        : "Read-only — log in as admin to run the simulation (it changes real occupancy).";
+        ? "Signed in — ±10 / ±50 / surge write the zone's occupancy straight to the backend."
+        : "Read-only — sign in to run the simulation (it changes real occupancy).";
       hint.classList.toggle("is-locked", !writable);
     }
   }
 
-  /** Applies +/- delta to a zone, locally and — when admin — on the backend. */
+  /** Applies a +/- delta to a zone and, when signed in, to the backend. */
   async function simulate(delta) {
     const zone = activeSimulationZone();
     if (!zone) { showToast("Load a zone before simulating.", "error"); return; }
 
     if (!isWritable()) {
-      showToast("The simulation changes real occupancy — log in as admin first.", "error");
+      showToast("The simulation changes real occupancy — sign in first.", "error");
       return;
     }
 
@@ -836,16 +932,22 @@
         text.textContent = `Backend online · ${state.zones.length} zone(s) · last sync ${stamp}`
           + (auth.username ? ` · signed in as ${auth.username} (${auth.role})` : "");
       } else {
-        text.textContent = "Backend offline — showing fallback demo zones. Start uvicorn to go live.";
+        text.textContent = "Backend offline — showing fallback zones. Start uvicorn to go live.";
       }
     }
   }
 
   async function syncZones({ silent = false } = {}) {
     try {
-      const venues = await apiFetch("/venues");
-      const zones = (venues || []).map(normalizeZone);
-      state.zones = zones.length > 0 ? zones : MOCK_ZONES.map(normalizeZone);
+      // Venues, the event programme and the staff pool all shape this page.
+      const [venues, events, staff] = await Promise.all([
+        apiFetch("/venues"),
+        apiFetch("/events").catch(() => []),
+        apiFetch("/staff").catch(() => null)
+      ]);
+      state.zones = (venues || []).map(normalizeZone);
+      state.events = events || [];
+      state.staff = staff;
       state.live = true;
       state.lastSync = new Date();
       if (state.focusZoneId != null && !state.zones.some(z => z.id === state.focusZoneId)) {
@@ -857,9 +959,11 @@
     } catch (err) {
       state.live = false;
       state.zones = MOCK_ZONES.map(normalizeZone);
+      state.events = [];
+      state.staff = null;
       renderConnection();
       refreshAll();
-      if (!silent) showToast(`API offline — using demo zones (${err.message})`, "error");
+      if (!silent) showToast(`API offline — showing fallback zones (${err.message})`, "error");
       return false;
     }
   }
@@ -904,15 +1008,30 @@
       .then(() => refreshAll())
       .catch(err => {
         errorEl.textContent = err.status === 401
-          ? "Wrong username or password. Demo: admin / admin123."
+          ? "Wrong username or password."
           : err.message;
       });
   }
 
   function handleLogout() {
     auth.clear();
-    showToast("Signed out. Simulation changes will stay local.", "success");
+    showToast("Signed out — the monitor is read-only until you sign in again.", "success");
     renderAuth();
+    refreshAll();
+  }
+
+  /**
+   * The monitor opens signed in as the standard operator account, so staff can
+   * be deployed straight away; signing out stays read-only.
+   */
+  async function ensureDefaultSession() {
+    if (auth.token) return;
+    try {
+      const data = await apiFetch("/auth/login", {
+        method: "POST", body: { username: "user", password: "user123" }
+      });
+      auth.save(data);
+    } catch (_) { /* stay signed out — the UI says what is read-only */ }
   }
 
   /* ------------------------------------------------------------------
@@ -923,13 +1042,6 @@
     $("login-cancel").addEventListener("click", () => $("login-panel").classList.add("hidden"));
     $("login-form").addEventListener("submit", handleLogin);
     $("logout").addEventListener("click", handleLogout);
-    $("demo-account-link").addEventListener("click", (e) => {
-      e.preventDefault();
-      $("login-username").value = "admin";
-      $("login-password").value = "admin123";
-      $("login-title").textContent = "Admin log in (demo)";
-    });
-
     $("simulation-zone-select").addEventListener("change", (e) => {
       state.simulationZoneId = Number(e.target.value);
       renderSimulation();
@@ -967,9 +1079,12 @@
       state.live = false;
       renderConnection();
       refreshAll();
-      showToast("Backend offline — using demo zones. Start uvicorn to go live.", "error");
+      showToast("Backend offline — using fallback zones. Start uvicorn to go live.", "error");
     } else {
+      await ensureDefaultSession();
       await syncZones();
+      renderAuth();
+      refreshAll();
     }
 
     wireEvents();
