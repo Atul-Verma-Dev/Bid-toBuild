@@ -1,9 +1,12 @@
-# Smart Event Crowd Management — Backend API
+# OmniView — Smart Event Crowd Management
 
-FastAPI + SQLite backend for the Smart Event Crowd Management hackathon project.
-It manages event venues/zones, calculates crowd status, suggests redirection
-destinations, and serves announcements. Occupancy is supplied through the API
-(no sensors).
+FastAPI + SQLite backend **and web dashboard** for the Smart Event Crowd
+Management hackathon project. It manages event venues/zones, calculates crowd
+status, suggests redirection destinations, and serves announcements. Occupancy
+is supplied through the API (no sensors).
+
+The same server also hosts the four front-end pages in `templates/`, sharing the
+assets in `static/` — one command starts everything.
 
 ## Run it (about 30 seconds)
 
@@ -13,9 +16,19 @@ python -m venv .venv
 .venv/bin/uvicorn main:app --reload
 ```
 
-- API: http://127.0.0.1:8000
+Web pages (served by FastAPI):
+
+| Page           | URL          | Template                |
+| -------------- | ------------ | ----------------------- |
+| Landing page   | `/`          | `templates/home.html`   |
+| Live dashboard | `/dashboard` | `templates/index.html`  |
+| Zone monitor   | `/zones`     | `templates/zone-monitor.html` |
+| Analytics      | `/analytics` | `templates/yash_dashboard.html` |
+
 - Interactive docs (Swagger): http://127.0.0.1:8000/docs
 - ReDoc: http://127.0.0.1:8000/redoc
+- API info + endpoint map (JSON): http://127.0.0.1:8000/api
+- Static assets: `/static/css/*`, `/static/js/*`
 
 The SQLite file `app.db` is created and seeded automatically on first start.
 Delete `app.db` to reset demo data.
@@ -57,12 +70,16 @@ Send it as `Authorization: Bearer $TOKEN` on admin endpoints.
 
 ## Endpoints
 
-### Meta
+### Meta / pages
 
-| Method | Path      | Description           |
-| ------ | --------- | --------------------- |
-| GET    | `/`       | API info + endpoint map |
-| GET    | `/health` | Health check          |
+| Method | Path         | Description                  |
+| ------ | ------------ | ---------------------------- |
+| GET    | `/`          | Landing page (HTML)          |
+| GET    | `/dashboard` | Live venue dashboard (HTML)  |
+| GET    | `/zones`     | Zone monitoring console (HTML) |
+| GET    | `/analytics` | Crowd analytics (HTML)       |
+| GET    | `/api`       | API info + endpoint map      |
+| GET    | `/health`    | Health check                 |
 
 ### Auth
 
@@ -156,10 +173,32 @@ suggested. If nothing is available, `suggestion` is `null` with a `reason`.
 ## Project layout
 
 ```
-main.py            # FastAPI app, CORS, router wiring
+main.py            # FastAPI app, CORS, static mount, page routes, router wiring
 database.py        # SQLite schema, connection dependency, seed data
 models.py          # Pydantic request/response models
 auth.py            # password hashing, signed tokens, role dependencies
 crowd.py           # occupancy %, status, active window, redirection
 routers/           # auth.py, venues.py, announcements.py
+templates/         # home.html, index.html, zone-monitor.html, yash_dashboard.html
+static/css/        # monitoring.css, yash_dashboard.css
+static/js/         # monitoring.js, yash_dashboard.js
 ```
+
+## Front-end wiring
+
+Every page talks to the API on the **same origin** (no CORS setup needed) and
+falls back to local demo data if the backend is unreachable:
+
+- **Live dashboard** (`/dashboard`) — `GET /venues` on load; `PATCH /venues/{id}/occupancy`,
+  `PATCH /venues/{id}`, `POST /venues` and `DELETE /venues/{id}` when signed in as
+  admin (otherwise changes stay local to the page). The redirection banner uses the
+  backend's `GET /venues/{id}/suggestion` to confirm and explain its pick.
+- **Zone monitor** (`/zones`) — polls `GET /venues` every 10 s for cards, alerts,
+  redirection options and staff hints; the crowd simulation writes occupancy back
+  through `PATCH /venues/{id}/occupancy` when an admin token is stored.
+- **Analytics** (`/analytics`) — polls `GET /venues` + `GET /announcements` every 5 s
+  and renders the doughnut / bar / trend charts with Chart.js.
+- **Home** (`/`) — checks `/health`, lists live venues and links every dashboard.
+
+Admin tokens are stored in `localStorage` (`token`, `auth_user`, `auth_role`), so
+signing in on one page signs you in on the others.

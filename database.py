@@ -15,9 +15,13 @@ def now_iso() -> str:
 
 
 def get_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(DB_PATH)
+    # check_same_thread=False: FastAPI runs sync dependencies and endpoints in
+    # threadpool workers and they are not guaranteed to share a thread. Every
+    # request gets its own connection, so sharing across threads is safe here.
+    connection = sqlite3.connect(DB_PATH, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 5000")  # wait instead of locking
     return connection
 
 

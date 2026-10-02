@@ -1,197 +1,162 @@
-<div id="yash-dashboard-root">
-  <!-- Header -->
-  <header class="yash-header">
-    <div class="yash-header-left">
-      <div class="yash-logo">&#128202;</div>
-      <div>
-        <h1 class="yash-title">Event Overview</h1>
-        <p class="yash-subtitle">Real-time crowd intelligence and occupancy insights</p>
-      </div>
-    </div>
-    <div class="yash-header-right">
-      <div class="yash-data-source">
-        <span class="yash-data-source-icon">&#9888;</span>
-        <span class="yash-data-source-text">
-          <span class="yash-data-source-label">Demo Data</span>
-          <span class="yash-data-source-status">Live · Connected</span>
-        </span>
-      </div>
-    </div>
-  </header>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniView | Event Overview &amp; Crowd Analytics</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 
-  <!-- Statistics Cards -->
-  <section class="yash-stats-grid">
-    <div class="yash-card yash-stat-card">
-      <div class="yash-card-icon">&#128193;</div>
-      <div class="yash-card-content">
-        <span class="yash-card-label">Total Attendees</span>
-        <span class="yash-card-value" id="yash-stat-total">84,620</span>
-        <span class="yash-card-sub">+12.4% vs yesterday</span>
-      </div>
-    </div>
-    <div class="yash-card yash-stat-card">
-      <div class="yash-card-icon">&#128205;</div>
-      <div class="yash-card-content">
-        <span class="yash-card-label">Active Zones</span>
-        <span class="yash-card-value" id="yash-stat-active-zones">8</span>
-        <span class="yash-card-sub">All zones reporting</span>
-      </div>
-    </div>
-    <div class="yash-card yash-stat-card">
-      <div class="yash-card-icon">&#128200;</div>
-      <div class="yash-card-content">
-        <span class="yash-card-label">Overall Occupancy</span>
-        <span class="yash-card-value" id="yash-stat-occupancy">78.4%</span>
-        <span class="yash-card-sub">Of 105,000 capacity</span>
-      </div>
-    </div>
-    <div class="yash-card yash-stat-card">
-      <div class="yash-card-icon">&#128681;</div>
-      <div class="yash-card-content">
-        <span class="yash-card-label">Active Alerts</span>
-        <span class="yash-card-value" id="yash-stat-alerts">2</span>
-        <span class="yash-card-sub">1 critical, 1 warning</span>
-      </div>
-    </div>
-  </section>
+  <!-- Shared styles for this dashboard -->
+  <link rel="stylesheet" href="/static/css/yash_dashboard.css">
 
-  <!-- Occupancy Overview -->
-  <section class="yash-section">
-    <div class="yash-section-header">
-      <h2 class="yash-section-title">Occupancy Overview</h2>
-      <p class="yash-section-subtitle">Live occupancy across event zones (source: <a href="/venues">GET /venues</a>)</p>
-    </div>
+  <!-- Chart.js (doughnut / bar / line charts) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
 
-    <div class="yash-card yash-occupancy-grid">
-      <div class="yash-occupancy-item">
-        <div class="yash-occupancy-body">
-          <span class="yash-occupancy-name">Main Stage</span>
-          <span class="yash-occupancy-value">14,820</span>
-          <span class="yash-occupancy-capacity">/ 20,000</span>
+  <!-- Cross-page navigation -->
+  <nav class="yash-topnav">
+    <a href="/">🏠 Home</a>
+    <a href="/dashboard">📈 Live Dashboard</a>
+    <a href="/zones">🛰️ Zone Monitor</a>
+    <a href="/docs">📚 API Docs</a>
+  </nav>
+
+  <div id="yash-dashboard-root">
+    <!-- Header -->
+    <header class="yash-header">
+      <div class="yash-header-left">
+        <div class="yash-logo">&#128202;</div>
+        <div>
+          <h1 class="yash-title">Event Overview</h1>
+          <p class="yash-subtitle">Real-time crowd intelligence and occupancy insights</p>
         </div>
-        <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-warning" style="width:74%"></div>
-        </div>
-        <div class="yash-occupancy-label">74% <span class="yash-badge yash-badge-warning">Warning</span></div>
       </div>
-
-      <div class="yash-occupancy-item">
-        <div class="yash-occupancy-body">
-          <span class="yash-occupancy-name">Food Court</span>
-          <span class="yash-occupancy-value">9,640</span>
-          <span class="yash-occupancy-capacity">/ 12,000</span>
+      <div class="yash-header-right">
+        <div class="yash-data-source">
+          <span class="yash-data-source-icon">&#9888;</span>
+          <span class="yash-data-source-text">
+            <span class="yash-data-source-label">Data Source</span>
+            <span class="yash-data-source-status" id="yash-data-source-status">Live · Connected</span>
+          </span>
         </div>
-        <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-critical" style="width:80%"></div>
-        </div>
-        <div class="yash-occupancy-label">80% <span class="yash-badge yash-badge-critical">Critical</span></div>
       </div>
+    </header>
 
-      <div class="yash-occupancy-item">
-        <div class="yash-occupancy-body">
-          <span class="yash-occupancy-name">Gaming Arena</span>
-          <span class="yash-occupancy-value">6,210</span>
-          <span class="yash-occupancy-capacity">/ 8,000</span>
+    <!-- Statistics Cards -->
+    <section class="yash-stats-grid">
+      <div class="yash-card yash-stat-card">
+        <div class="yash-card-icon">&#128193;</div>
+        <div class="yash-card-content">
+          <span class="yash-card-label">Total Attendees</span>
+          <span class="yash-card-value" id="yash-stat-total">—</span>
+          <span class="yash-card-sub" id="yash-stat-total-sub">Loading…</span>
         </div>
-        <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-warning" style="width:78%"></div>
+      </div>
+      <div class="yash-card yash-stat-card">
+        <div class="yash-card-icon">&#128205;</div>
+        <div class="yash-card-content">
+          <span class="yash-card-label">Active Zones</span>
+          <span class="yash-card-value" id="yash-stat-active-zones">—</span>
+          <span class="yash-card-sub" id="yash-stat-zones-sub">Loading…</span>
         </div>
-        <div class="yash-occupancy-label">78% <span class="yash-badge yash-badge-warning">Warning</span></div>
+      </div>
+      <div class="yash-card yash-stat-card">
+        <div class="yash-card-icon">&#128200;</div>
+        <div class="yash-card-content">
+          <span class="yash-card-label">Overall Occupancy</span>
+          <span class="yash-card-value" id="yash-stat-occupancy">—</span>
+          <span class="yash-card-sub" id="yash-stat-occupancy-sub">Loading…</span>
+        </div>
+      </div>
+      <div class="yash-card yash-stat-card">
+        <div class="yash-card-icon">&#128681;</div>
+        <div class="yash-card-content">
+          <span class="yash-card-label">Active Alerts</span>
+          <span class="yash-card-value" id="yash-stat-alerts">—</span>
+          <span class="yash-card-sub" id="yash-stat-alerts-sub">Loading…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Occupancy Overview -->
+    <section class="yash-section">
+      <div class="yash-section-header">
+        <h2 class="yash-section-title">Occupancy Overview</h2>
+        <p class="yash-section-subtitle">Live occupancy across event zones (source: <a href="/venues">GET /venues</a>)</p>
       </div>
 
-      <div class="yash-occupancy-item">
-        <div class="yash-occupancy-body">
-          <span class="yash-occupancy-name">Registration Area</span>
-          <span class="yash-occupancy-value">3,180</span>
-          <span class="yash-occupancy-capacity">/ 5,000</span>
-        </div>
-        <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-ok" style="width:64%"></div>
-        </div>
-        <div class="yash-occupancy-label">64% <span class="yash-badge yash-badge-ok">OK</span></div>
-      </div>
-
-      <div class="yash-occupancy-item">
-        <div class="yash-occupancy-body">
-          <span class="yash-occupancy-name">Exhibition Hall</span>
-          <span class="yash-occupancy-value">21,450</span>
-          <span class="yash-occupancy-capacity">/ 28,000</span>
-        </div>
-        <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-warning" style="width:77%"></div>
-        </div>
-        <div class="yash-occupancy-label">77% <span class="yash-badge yash-badge-warning">Warning</span></div>
-      </div>
-
-      <div class="yash-occupancy-item">
-        <div class="yash-occupancy-body">
-          <span class="yash-occupancy-name">VIP Lounge</span>
-          <span class="yash-occupancy-value">1,240</span>
-          <span class="yash-occupancy-capacity">/ 1,500</span>
-        </div>
-        <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-warning" style="width:83%"></div>
-        </div>
-        <div class="yash-occupancy-label">83% <span class="yash-badge yash-badge-warning">Warning</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Crowd Analytics -->
-  <section class="yash-section">
-    <div class="yash-section-header">
-      <h2 class="yash-section-title">Crowd Analytics</h2>
-      <p class="yash-section-subtitle">Visualization of crowd trends and zone distribution</p>
-    </div>
-
-    <div class="yash-analytics-grid">
-      <div class="yash-card yash-chart-card">
-        <div class="yash-chart-placeholder">
-          <span class="yash-chart-icon">&#128198;</span>
-          <span class="yash-chart-title">Crowd Occupancy Trends</span>
-          <span class="yash-chart-badge">Line Chart</span>
-        </div>
-        <div class="yash-chart-empty">Chart.js mount point &#128205;</div>
-        <div class="yash-chart-container">
-          <canvas id="yash-chart-trend"></canvas>
-        </div>
-        <div class="yash-time-filters">
-          <span class="yash-time-filter-label">View:</span>
-          <button class="yash-time-filter-btn active" data-filter="30m">Last 30 min</button>
-          <button class="yash-time-filter-btn" data-filter="1h">Last 1 hour</button>
-          <button class="yash-time-filter-btn" data-filter="6h">Last 6 hours</button>
+      <div class="yash-card yash-occupancy-grid">
+        <!-- Zone cards are rendered from the backend by yash_dashboard.js -->
+        <div class="yash-occupancy-item">
+          <div class="yash-occupancy-body">
+            <span class="yash-occupancy-name">Loading zones…</span>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div class="yash-card yash-chart-card">
-        <div class="yash-chart-placeholder">
-          <span class="yash-chart-icon">&#128206;</span>
-          <span class="yash-chart-title">Zone Distribution</span>
-          <span class="yash-chart-badge">Doughnut Chart</span>
-        </div>
-        <div class="yash-chart-empty">Chart.js mount point &#128205;</div>
-        <div class="yash-chart-container">
-          <canvas id="yash-chart-distribution"></canvas>
-          <div class="yash-chart-center-label">Total attendees here</div>
-        </div>
+    <!-- Crowd Analytics -->
+    <section class="yash-section">
+      <div class="yash-section-header">
+        <h2 class="yash-section-title">Crowd Analytics</h2>
+        <p class="yash-section-subtitle">Visualization of crowd trends and zone distribution</p>
       </div>
 
-      <div class="yash-card yash-chart-card">
-        <div class="yash-chart-placeholder">
-          <span class="yash-chart-icon">&#128207;</span>
-          <span class="yash-chart-title">Zone Occupancy Comparison</span>
-          <span class="yash-chart-badge">Bar Chart</span>
+      <div class="yash-analytics-grid">
+        <div class="yash-card yash-chart-card">
+          <div class="yash-chart-placeholder">
+            <span class="yash-chart-icon">&#128198;</span>
+            <span class="yash-chart-title">Crowd Occupancy Trends</span>
+            <span class="yash-chart-badge">Line Chart</span>
+          </div>
+          <div class="yash-chart-container">
+            <canvas id="yash-chart-trend"></canvas>
+          </div>
+          <div class="yash-time-filters">
+            <span class="yash-time-filter-label">View:</span>
+            <button class="yash-time-filter-btn active" data-filter="30m">Last 30 min</button>
+            <button class="yash-time-filter-btn" data-filter="1h">Last 1 hour</button>
+            <button class="yash-time-filter-btn" data-filter="6h">Last 6 hours</button>
+          </div>
         </div>
-        <div class="yash-chart-empty">Chart.js mount point &#128205;</div>
-        <div class="yash-chart-container">
-          <canvas id="yash-chart-comparison"></canvas>
+
+        <div class="yash-card yash-chart-card">
+          <div class="yash-chart-placeholder">
+            <span class="yash-chart-icon">&#128206;</span>
+            <span class="yash-chart-title">Zone Distribution</span>
+            <span class="yash-chart-badge">Doughnut Chart</span>
+          </div>
+          <div class="yash-chart-container">
+            <canvas id="yash-chart-distribution"></canvas>
+            <div class="yash-chart-center-label">Total attendees here</div>
+          </div>
+        </div>
+
+        <div class="yash-card yash-chart-card">
+          <div class="yash-chart-placeholder">
+            <span class="yash-chart-icon">&#128207;</span>
+            <span class="yash-chart-title">Zone Occupancy Comparison</span>
+            <span class="yash-chart-badge">Bar Chart</span>
+          </div>
+          <div class="yash-chart-container">
+            <canvas id="yash-chart-comparison"></canvas>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Footer -->
-  <footer class="yash-footer">
-    <p>&#169; 2026 CrowdFlow · Smart Event Crowd Management · Dashboard Overview</p>
-  </footer>
-</div>
+    <!-- Footer -->
+    <footer class="yash-footer">
+      <p>&#169; 2026 OmniView · Smart Event Crowd Management · Dashboard Overview</p>
+    </footer>
+  </div>
+
+  <!-- Dashboard logic: polls GET /venues + GET /announcements every 5 seconds -->
+  <script src="/static/js/yash_dashboard.js"></script>
+  <script>
+    window.OmniViewDashboard.init('#yash-dashboard-root');
+  </script>
+
+</body>
+</html>

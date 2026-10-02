@@ -76,8 +76,9 @@
   // Configuration
   // ---------------------------------------------------------------------------
   const CONFIG = {
-    // API base URL — change this once if the backend moves
-    apiBase: '/',
+    // API base URL — "" means same origin (FastAPI serves this page).
+    // apiGet() below falls back to http://127.0.0.1:8000 when that fails.
+    apiBase: '',
     // Refresh interval in milliseconds (5 seconds per requirements)
     refreshIntervalMs: 5000,
     // Demo data fallback when the backend is unreachable
@@ -172,20 +173,36 @@
   // ---------------------------------------------------------------------------
   // Fetch real data from the FastAPI backend
   // ---------------------------------------------------------------------------
-  async function fetchZones() {
-    const response = await fetch(`${CONFIG.apiBase}venues`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to fetch venues`);
+  // Try the page's own origin first, then the local dev server (useful when
+  // the file is opened directly or hosted on a different port).
+  const API_FALLBACK = 'http://127.0.0.1:8000';
+  let resolvedApiBase = null;
+
+  async function apiGet(path) {
+    const candidates = resolvedApiBase != null ? [resolvedApiBase] : [CONFIG.apiBase, API_FALLBACK];
+    let lastError = null;
+
+    for (const base of candidates) {
+      try {
+        const response = await fetch(`${base}${path}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${path}`);
+        }
+        resolvedApiBase = base;
+        return await response.json();
+      } catch (error) {
+        lastError = error;
+      }
     }
-    return response.json();
+    throw lastError || new Error(`Request failed: ${path}`);
+  }
+
+  async function fetchZones() {
+    return apiGet('/venues');
   }
 
   async function fetchAlerts() {
-    const response = await fetch(`${CONFIG.apiBase}announcements?active_only=true`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to fetch announcements`);
-    }
-    return response.json();
+    return apiGet('/announcements?active_only=true');
   }
 
   // ---------------------------------------------------------------------------
@@ -206,19 +223,30 @@
     // that are active AND security-relevant (WARNING, REDIRECT, EMERGENCY).
     // INFO announcements are general notices, not safety alerts.
     let alertCount = 0;
+    let alertsCritical = 0;
+    let alertsWarning = 0;
     if (Array.isArray(announcements)) {
       announcements.forEach((a) => {
         if (a.active && a.type && a.type !== 'INFO') {
           alertCount += 1;
+          if (a.type === 'EMERGENCY' || a.type === 'REDIRECT') {
+            alertsCritical += 1;
+          } else {
+            alertsWarning += 1;
+          }
         }
       });
     }
 
     return {
       totalAttendees: total,
+      totalCapacity,
       activeZones,
+      openZones: zones.filter((z) => z.is_active === true).length,
       overallOccupancy: Math.round(overallOccupancy * 100) / 100,
       activeAlerts: alertCount,
+      alertsCritical,
+      alertsWarning,
     };
   }
 
@@ -230,11 +258,20 @@
     if (!root) return;
 
     const el = (id) => root.querySelector(`#${id}`);
+    const set = (id, text) => { const node = el(id); if (node) node.textContent = text; };
 
-    el('yash-stat-total').textContent = stats.totalAttendees.toLocaleString();
-    el('yash-stat-active-zones').textContent = stats.activeZones;
-    el('yash-stat-occupancy').textContent = stats.overallOccupancy + '%';
-    el('yash-stat-alerts').textContent = stats.activeAlerts;
+    set('yash-stat-total', stats.totalAttendees.toLocaleString());
+    set('yash-stat-total-sub', `Across ${stats.activeZones} zone(s)`);
+    set('yash-stat-active-zones', stats.activeZones);
+    set('yash-stat-zones-sub', stats.openZones != null ? `${stats.openZones} open right now` : 'All zones reporting');
+    set('yash-stat-occupancy', stats.overallOccupancy + '%');
+    set('yash-stat-occupancy-sub', `Of ${(stats.totalCapacity || 0).toLocaleString()} total capacity`);
+    set('yash-stat-alerts', stats.activeAlerts);
+    set('yash-stat-alerts-sub', `${stats.alertsCritical || 0} critical, ${stats.alertsWarning || 0} warning`);
+
+    // Centre label of the doughnut chart
+    const centre = root.querySelector('.yash-chart-center-label');
+    if (centre) centre.textContent = `${stats.totalAttendees.toLocaleString()} attendees`;
   }
 
   // ---------------------------------------------------------------------------
@@ -285,18 +322,20 @@
 
     state.zones = data.zones || [];
     state.totalAttendees = data.stats.totalAttendees || 0;
+    state.totalCapacity = data.stats.totalCapacity || 0;
     state.activeZones = data.stats.activeZones || 0;
+    state.openZones = data.stats.openZones;
     state.overallOccupancy = data.stats.overallOccupancy || 0;
     state.activeAlerts = data.stats.activeAlerts || 0;
+    state.alertsCritical = data.stats.alertsCritical || 0;
+    state.alertsWarning = data.stats.alertsWarning || 0;
     state.lastUpdateTime = data.meta?.timestamp || null;
 
     renderStats(state);
     renderOccupancyCards(state.zones);
 
-    // Trigger analytics charts to update with latest zone data
-    if (state.charts.distribution || state.charts.comparison) {
-      renderAnalytics(data);
-    }
+    // Draw or update the analytics charts with the latest zone data
+    renderAnalytics(data);
   }
 
   // ---------------------------------------------------------------------------
@@ -308,9 +347,13 @@
 
     state.zones = data.zones || [];
     state.totalAttendees = data.stats.totalAttendees || 0;
+    state.totalCapacity = data.stats.totalCapacity || 0;
     state.activeZones = data.stats.activeZones || 0;
+    state.openZones = data.stats.openZones;
     state.overallOccupancy = data.stats.overallOccupancy || 0;
     state.activeAlerts = data.stats.activeAlerts || 0;
+    state.alertsCritical = data.stats.alertsCritical || 0;
+    state.alertsWarning = data.stats.alertsWarning || 0;
     state.lastUpdateTime = data.meta?.timestamp || null;
 
     renderStats(state);
@@ -665,6 +708,8 @@
           id: z.id,
           name: z.name,
           capacity: z.capacity,
+          // The occupancy cards read `occupancy`, the charts read `current_count`.
+          occupancy: z.occupancy,
           current_count: z.occupancy,
           status: normalizeStatus(z.status),
         })),

@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniView | Smart Event Crowd Management</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏛️</text></svg>">
+    <!-- Tailwind CSS loaded via CDN for rapid UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for status icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Ensures the flashing banner is visually impossible to miss and cuts out cleanly */
+        .flash-banner {
+            animation: flashText 0.6s ease-in-out infinite alternate;
+            text-shadow: 0 0 10px rgba(255, 0, 0, 0.7), 0 0 20px rgba(255, 0, 0, 0.4);
+        }
+        @keyframes flashText {
+            0% { opacity: 1; }
+            100% { opacity: 0.25; }
+        }
+        .toast { animation: toastIn 0.25s ease-out; }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen font-sans">
+
+    <!-- ===================== HEADER ===================== -->
+    <header class="bg-gradient-to-r from-blue-800 via-indigo-700 to-purple-700 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
+                        <i class="fas fa-globe mr-3"></i>OmniView
+                    </h1>
+                    <span class="inline-block bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide">
+                        Live Dashboard
+                    </span>
+                    <nav class="flex items-center gap-2 text-sm">
+                        <a href="/" class="rounded-lg px-3 py-1 bg-white/10 hover:bg-white/20 transition"><i class="fas fa-home mr-1"></i>Home</a>
+                        <a href="/zones" class="rounded-lg px-3 py-1 bg-white/10 hover:bg-white/20 transition"><i class="fas fa-satellite-dish mr-1"></i>Zone Monitor</a>
+                        <a href="/analytics" class="rounded-lg px-3 py-1 bg-white/10 hover:bg-white/20 transition"><i class="fas fa-chart-pie mr-1"></i>Analytics</a>
+                    </nav>
+                </div>
+                <p class="text-blue-200 text-sm hidden sm:block">
+                    Real-time zone monitoring &amp; smart redirection engine
+                </p>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===================== BACKEND CONNECTION STRIP ===================== -->
+    <div class="bg-slate-900 text-slate-100 shadow-md">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div class="flex items-center gap-3 text-sm">
+                    <span id="connDot" class="h-2.5 w-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                    <span id="connText" class="font-semibold">Connecting to FastAPI…</span>
+                </div>
+                <form id="loginForm" class="flex flex-wrap items-center gap-2 text-sm" autocomplete="off">
+                    <input id="loginUsername" type="text" placeholder="username"
+                           class="w-32 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 outline-none focus:border-blue-400">
+                    <input id="loginPassword" type="password" placeholder="password"
+                           class="w-36 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 outline-none focus:border-blue-400">
+                    <button id="loginBtn" type="submit"
+                            class="rounded-lg bg-blue-600 px-3 py-1.5 font-semibold hover:bg-blue-500 transition">
+                        <i class="fas fa-sign-in-alt mr-1"></i>Login
+                    </button>
+                    <button id="logoutBtn" type="button"
+                            class="hidden rounded-lg bg-slate-700 px-3 py-1.5 font-semibold hover:bg-slate-600 transition">
+                        <i class="fas fa-sign-out-alt mr-1"></i>Logout
+                    </button>
+                    <button id="refreshBtn" type="button"
+                            class="rounded-lg border border-slate-600 px-3 py-1.5 font-semibold hover:bg-slate-800 transition">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh live data
+                    </button>
+                    <span class="text-xs text-slate-400">admin / admin123</span>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== REDIRECTION BANNER ===================== -->
+    <!-- Dynamically populated by JS. Shows a massive flashing warning ONLY when a venue is in the red band -->
+    <div id="redirectionBanner" class="hidden container mx-auto px-4 pt-6">
+        <div class="bg-red-600 text-white rounded-xl shadow-2xl flash-banner p-6 sm:p-8 text-center">
+            <div class="text-3xl sm:text-5xl font-black mb-3">
+                <i class="fas fa-exclamation-triangle mr-3"></i>
+                <span id="bannerTitle">[Red Venue] is near capacity.</span>
+            </div>
+            <div class="text-lg sm:text-2xl font-bold">
+                Suggested redirection: <span id="bannerSuggestion">[Lowest % Venue]</span>
+            </div>
+            <div id="bannerReason" class="mt-3 text-red-100 text-sm"></div>
+            <div class="mt-2 text-red-50 text-sm">
+                <i class="fas fa-arrow-right mr-2"></i>Please redirect attendees to a safer zone immediately.
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== MAIN CONTENT ===================== -->
+    <main class="container mx-auto px-4 py-8">
+
+        <!-- ===================== CURRENT EVENT BAR ===================== -->
+        <div class="bg-gradient-to-r from-gray-800 to-gray-700 text-white rounded-xl shadow-md p-6 mb-8 border border-gray-400">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i class="fas fa-calendar-alt text-purple-300"></i>
+                        Current Event
+                    </h2>
+                    <p id="currentEventLabel" class="text-gray-200 font-semibold mt-1"></p>
+                    <p id="currentEventDescription" class="text-gray-400 text-sm"></p>
+                </div>
+                <div class="flex flex-col items-start sm:items-end gap-2">
+                    <div class="flex flex-wrap gap-2" id="eventSelector">
+                        <!-- Events are dynamically populated here -->
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="editEventBtn" type="button"
+                                class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow">
+                            <i class="fas fa-pen mr-1"></i>Edit event
+                        </button>
+                        <button id="newEventBtn" type="button"
+                                class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow">
+                            <i class="fas fa-plus mr-1"></i>New event
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inline event editor (hidden until "Edit event" is clicked) -->
+            <form id="eventEditForm" class="hidden mt-4 grid grid-cols-1 sm:grid-cols-12 gap-3 border-t border-gray-600 pt-4">
+                <input id="eventEditName" type="text" required placeholder="Event name"
+                       class="sm:col-span-4 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
+                <input id="eventEditDate" type="date" required
+                       class="sm:col-span-3 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
+                <input id="eventEditDescription" type="text" placeholder="Description / expected attendance"
+                       class="sm:col-span-5 rounded-lg border border-gray-500 bg-gray-900 px-3 py-2 text-sm outline-none focus:border-purple-400">
+                <div class="sm:col-span-12 flex gap-2">
+                    <button type="submit"
+                            class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                        <i class="fas fa-save mr-1"></i>Save event
+                    </button>
+                    <button id="eventEditCancel" type="button"
+                            class="bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ===================== VENUE CARDS GRID ===================== -->
+        <div id="venuesGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- Each venue card is rendered by JS into this container -->
+        </div>
+
+        <!-- ===================== VENUE MANAGEMENT TOOLBAR ===================== -->
+        <div class="bg-white rounded-xl shadow-md p-5 mb-8 border border-gray-200">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex flex-wrap items-center gap-3">
+                    <h2 class="text-lg font-bold text-gray-800">
+                        <i class="fas fa-plus-circle mr-2 text-emerald-600"></i>Add Venue / Delete
+                    </h2>
+                    <div class="flex gap-2">
+                        <button id="addVenueBtn" type="button"
+                                class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                            <i class="fas fa-plus mr-1"></i>Add Venue
+                        </button>
+                        <button id="clearVenuesBtn" type="button"
+                                class="bg-gray-400 hover:bg-gray-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                            <i class="fas fa-trash-alt mr-1"></i>Clear All
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500">
+                    Logged in as admin? Changes are written to the SQLite backend with
+                    <code>PATCH /venues/{id}/occupancy</code>. Otherwise they stay local to this page.
+                </p>
+            </div>
+        </div>
+
+        <!-- ===================== KEY INSIGHT / STATUS FOOTER ===================== -->
+        <div id="statusFooter" class="bg-white rounded-xl shadow-md p-6 border border-gray-200">
+            <div class="flex flex-col sm:flex-row justify-between items-center text-gray-700 gap-3">
+                <p class="text-sm md:text-base">
+                    <i class="fas fa-info-circle mr-2 text-blue-500"></i>
+                    <span id="summaryText">Loading venues…</span>
+                </p>
+                <p class="text-sm text-gray-500">
+                    <i class="fas fa-sync-alt mr-2"></i>
+                    <span id="lastUpdated">Updated: <span id="now">…</span></span>
+                </p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Toast stack -->
+    <div id="toastStack" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 w-80"></div>
+
+    <!-- ===================== JAVASCRIPT LOGIC ===================== -->
+    <script>
+    /* =================================================================
+       0. CONFIGURATION + AUTH
+       ================================================================= */
+
+    // Same-origin first (FastAPI serves these pages); fall back to the
+    // default dev server if the page was opened from somewhere else.
+    const API_BASES = ["", "http://127.0.0.1:8000"];
+    let API_BASE = "";
+
+    const auth = {
+        token: localStorage.getItem("token") || "",
+        username: localStorage.getItem("auth_user") || "",
+        role: localStorage.getItem("auth_role") || "",
+        get isAdmin() { return this.role === "admin"; },
+        save(data) {
+            this.token = data.access_token;
+            this.username = data.username;
+            this.role = data.role;
+            localStorage.setItem("token", this.token);
+            localStorage.setItem("auth_user", this.username);
+            localStorage.setItem("auth_role", this.role);
+        },
+        clear() {
+            this.token = this.username = this.role = "";
+            localStorage.removeItem("token");
+            localStorage.removeItem("auth_user");
+            localStorage.removeItem("auth_role");
+        }
+    };
+
+    async function apiFetch(path, options = {}) {
+        const headers = Object.assign({ Accept: "application/json" }, options.headers || {});
+        if (options.body !== undefined) headers["Content-Type"] = "application/json";
+        if (options.auth) headers["Authorization"] = "Bearer " + auth.token;
+
+        const res = await fetch(API_BASE + path, {
+            method: options.method || "GET",
+            headers,
+            body: options.body !== undefined ? JSON.stringify(options.body) : undefined
+        });
+
+        if (res.status === 204) return null;
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+            const detail = data && data.detail;
+            const message = typeof detail === "string"
+                ? detail
+                : (detail && detail.message) || `Request failed (${res.status})`;
+            const error = new Error(message);
+            error.status = res.status;
+            throw error;
+        }
+        return data;
+    }
+
+    /* =================================================================
+       1. STATE — single source of truth for the whole dashboard
+       ================================================================= */
+    const state = {
+        currentEvent: {
+            id: "event_1",
+            name: "OmniHack 2026",
+            date: "2026-10-02",
+            description: "2-day tech hackathon | 1,500 attendees"
+        },
+        availableEvents: [
+            { id: "event_1", name: "OmniHack 2026", date: "2026-10-02", description: "2-day tech hackathon | 1,500 attendees" },
+            { id: "event_2", name: "TechDay Summit", date: "2026-11-15", description: "Industry conference | 800 attendees" },
+            { id: "event_3", name: "Genomics Workshop", date: "2026-12-01", description: "Lab & presentation day | 250 attendees" }
+        ],
+        // Local fallback venues, used until live data loads (or if the API is offline).
+        venues: [
+            { name: "MAIN HALL",  current: 300, max: 500 },
+            { name: "FOOD COURT", current: 150, max: 300 },
+            { name: "AUDITORIUM", current: 420, max: 600 },
+            { name: "EXHIBITION", current: 90,  max: 150 }
+        ],
+        live: false,          // true once GET /venues succeeded
+        suggestionSeq: 0      // guards against stale async suggestion responses
+    };
+
+    /* =================================================================
+       2. DOM REFERENCES + SMALL HELPERS
+       ================================================================= */
+    const grid            = document.getElementById("venuesGrid");
+    const banner          = document.getElementById("redirectionBanner");
+    const bannerTitle     = document.getElementById("bannerTitle");
+    const bannerSug       = document.getElementById("bannerSuggestion");
+    const bannerReason    = document.getElementById("bannerReason");
+    const footerText      = document.getElementById("summaryText");
+    const nowEl           = document.getElementById("now");
+    const lastUpdatedEl   = document.getElementById("lastUpdated");
+    const eventSelector   = document.getElementById("eventSelector");
+    const eventEditForm   = document.getElementById("eventEditForm");
+    const connDot         = document.getElementById("connDot");
+    const connText        = document.getElementById("connText");
+    const loginBtn        = document.getElementById("loginBtn");
+    const logoutBtn       = document.getElementById("logoutBtn");
+
+    const esc = (value) => String(value == null ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+    function toast(message, type = "info") {
+        const palette = {
+            info:    "bg-slate-800 border-slate-600 text-slate-100",
+            success: "bg-emerald-700 border-emerald-400 text-white",
+            error:   "bg-red-700 border-red-400 text-white",
+            warn:    "bg-amber-600 border-amber-300 text-white"
+        };
+        const el = document.createElement("div");
+        el.className = `toast rounded-lg border px-4 py-3 text-sm shadow-xl ${palette[type] || palette.info}`;
+        el.innerHTML = `
+            <div class="flex items-start gap-3">
+                <span class="flex-1">${esc(message)}</span>
+                <button type="button" class="opacity-70 hover:opacity-100" aria-label="Dismiss">&times;</button>
+            </div>`;
+        el.querySelector("button").addEventListener("click", () => el.remove());
+        document.getElementById("toastStack").appendChild(el);
+        setTimeout(() => el.remove(), 5000);
+    }
+
+    /* =================================================================
+       3. VENUE MODEL HELPERS
+       ================================================================= */
+
+    /** Normalize an API venue into the shape the UI renders. */
+    function fromApiVenue(raw) {
+        return {
+            id: raw.id,
+            name: raw.name,
+            current: raw.occupancy,
+            max: raw.capacity,
+            apiStatus: raw.status,               // NORMAL | MODERATE | WARNING | CRITICAL | OVERCROWDED
+            active: raw.is_active,
+            hours: `${raw.opening_time}–${raw.closing_time}`,
+            percentage: raw.occupancy_percentage
+        };
+    }
+
+    /** (current / max) * 100, rounded to 1 decimal. 0 when max is missing/zero. */
+    function getPercentage(zone) {
+        if (!zone || !zone.max || zone.max <= 0) return 0;
+        return Math.round((zone.current / zone.max) * 1000) / 10;
+    }
+
+    /**
+     * Colour band.
+     *   Live venues use the backend's own status thresholds
+     *   (WARNING 85%+, CRITICAL 95%+, OVERCROWDED >100%).
+     *   Local-only venues use the dashboard rule: <70 green, 70-89 yellow, >=90 red.
+     * Returns one of: "normal" | "moderate" | "critical" (critical === red band).
+     */
+    function statusBand(zone, percentage) {
+        if (zone.apiStatus) {
+            if (zone.apiStatus === "NORMAL") return "normal";
+            if (zone.apiStatus === "MODERATE") return "moderate";
+            return "critical";
+        }
+        if (percentage >= 90) return "critical";
+        if (percentage >= 70) return "moderate";
+        return "normal";
+    }
+
+    function statusLabel(zone, band) {
+        if (zone.apiStatus) return zone.apiStatus;
+        return band === "critical" ? "OVER CAPACITY RISK" : band === "moderate" ? "CAUTION" : "NORMAL";
+    }
+
+    const BAND_STYLES = {
+        normal:   { badge: "bg-green-100 border-green-400 text-green-800",
+                    card:  "bg-green-50 border-green-300",
+                    bar:   "bg-green-500" },
+        moderate: { badge: "bg-yellow-100 border-yellow-400 text-yellow-800",
+                    card:  "bg-yellow-50 border-yellow-300",
+                    bar:   "bg-yellow-500" },
+        critical: { badge: "bg-red-100 border-red-500 text-red-800",
+                    card:  "bg-red-50 border-red-400",
+                    bar:   "bg-red-500" }
+    };
+
+    /* =================================================================
+       4. RENDERING ENGINE
+       ================================================================= */
+
+    function render() {
+        renderEventBar();
+        let html = "";
+
+        state.venues.forEach((zone, index) => {
+            const pct  = getPercentage(zone);
+            const band = statusBand(zone, pct);
+            const style = BAND_STYLES[band];
+            const label = statusLabel(zone, band);
+            const width = Math.min(pct, 100);
+
+            const metaBits = [];
+            if (zone.id != null) metaBits.push(`<span class="text-xs text-gray-500 font-mono">#${zone.id}</span>`);
+            if (zone.hours)      metaBits.push(`<span class="text-xs ${zone.active ? "text-green-600" : "text-red-500"}">
+                    <i class="fas fa-clock mr-1"></i>${zone.active ? "Open" : "Closed"} · ${esc(zone.hours)}</span>`);
+
+            html += `
+                <div class="bg-white rounded-xl shadow-md border-2 p-5 sm:p-6 ${style.card} transition-all duration-300">
+                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-800">
+                                <i class="fas fa-building mr-2 text-blue-500"></i>${esc(zone.name)}
+                            </h3>
+                            <div class="mt-1 flex flex-wrap items-center gap-3">${metaBits.join("")}</div>
+                        </div>
+                        <div class="text-right">
+                            <span class="block text-3xl sm:text-4xl font-extrabold font-mono ${style.badge} border rounded-lg px-2">
+                                ${pct}%
+                            </span>
+                            <span class="mt-1 inline-block text-[11px] font-bold uppercase tracking-wide ${style.badge} border rounded-full px-2 py-0.5">
+                                ${esc(label)}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Occupancy percentage progress bar -->
+                    <div class="w-full h-3 bg-gray-200 rounded-full mb-4 overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-500 ease-out ${style.bar}"
+                             style="width: ${width}%;"></div>
+                    </div>
+
+                    <!-- (a) Current occupancy -->
+                    <div class="mb-3">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                            Current Attendance
+                        </label>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="number" min="0" step="1" value="${zone.current}"
+                                   id="currentInput_${index}"
+                                   class="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-500 outline-none transition">
+                            <button type="button" data-action="update-current" data-index="${index}"
+                                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                                <i class="fas fa-save mr-1"></i>Update
+                            </button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">
+                            ${zone.max <= 0
+                                ? "Set a capacity to enable percentage tracking."
+                                : (zone.current > zone.max
+                                    ? `Over capacity by ${zone.current - zone.max} attendee(s).`
+                                    : `${zone.max - zone.current} of ${zone.max} spots still free.`)}
+                        </p>
+                    </div>
+
+                    <!-- (b) Max capacity -->
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                            Max Capacity Limit
+                        </label>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="number" min="1" step="1" value="${zone.max}"
+                                   id="capacityInput_${index}"
+                                   class="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-500 outline-none transition">
+                            <button type="button" data-action="update-capacity" data-index="${index}"
+                                    class="bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition shadow">
+                                <i class="fas fa-weight-hanging mr-1"></i>Capacity
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- (c) Remove venue -->
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <button type="button" data-action="delete-venue" data-index="${index}"
+                                class="w-full bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
+                            <i class="fas fa-trash-alt mr-1"></i>Remove Venue
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        if (state.venues.length === 0) {
+            html = `
+                <div class="col-span-full bg-white border-2 border-dashed border-gray-300 rounded-xl p-10 text-center text-gray-500">
+                    <i class="fas fa-cubes text-4xl mb-3 block text-gray-300"></i>
+                    No venues in view. Use <strong>Add Venue</strong> below${state.live ? " or refresh live data" : ""}.
+                </div>`;
+        }
+
+        grid.innerHTML = html;
+        updateFooter();
+        evaluateRedirection();
+    }
+
+    function renderEventBar() {
+        // Current event label + description
+        document.getElementById("currentEventLabel").textContent =
+            `${state.currentEvent.name} · ${state.currentEvent.date}`;
+        document.getElementById("currentEventDescription").textContent =
+            state.currentEvent.description || "";
+
+        // Preset buttons
+        eventSelector.innerHTML = "";
+        state.availableEvents.forEach(ev => {
+            const active = ev.id === state.currentEvent.id;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = active
+                ? "text-left bg-purple-500 text-white text-sm font-semibold px-3 py-2 rounded-lg transition border border-purple-300 shadow"
+                : "text-left bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-3 py-2 rounded-lg transition border border-gray-200";
+            btn.innerHTML = `
+                <div class="font-bold">${esc(ev.name)}</div>
+                <div class="text-xs ${active ? "text-purple-100" : "text-gray-500"}">${esc(ev.date)}</div>`;
+            btn.addEventListener("click", () => {
+                state.currentEvent = ev;
+                render();
+            });
+            eventSelector.appendChild(btn);
+        });
+    }
+
+    /* =================================================================
+       5. STATE UPDATE HANDLERS (wired through data-action listeners)
+       ================================================================= */
+
+    /** Updates the current occupancy for a zone, locally and (admin) on the server. */
+    async function updateCurrent(index) {
+        const input = document.getElementById(`currentInput_${index}`);
+        const zone  = state.venues[index];
+        if (!zone || !input) return;
+
+        const raw = parseInt(input.value, 10);
+        if (Number.isNaN(raw)) { toast("Enter a whole number for occupancy.", "error"); return; }
+        const clamped = Math.max(0, raw);
+
+        if (state.live && zone.id != null && auth.isAdmin) {
+            try {
+                const updated = await apiFetch(`/venues/${zone.id}/occupancy`, {
+                    method: "PATCH", auth: true, body: { occupancy: clamped }
+                });
+                Object.assign(zone, fromApiVenue(updated));
+                toast(`${zone.name} updated on the backend (${updated.occupancy_percentage}%, ${updated.status}).`, "success");
+            } catch (err) {
+                if (err.status === 401 || err.status === 403) {
+                    toast("Admin token missing/expired — updated locally only.", "warn");
+                    zone.current = clamped;
+                } else {
+                    toast(`Backend rejected the update: ${err.message}`, "error");
+                    zone.current = clamped;
+                }
+            }
+        } else {
+            zone.current = clamped;
+            toast(`${zone.name} updated locally.${state.live ? " Log in as admin to persist to the backend." : ""}`,
+                  state.live ? "warn" : "info");
+        }
+        render();
+    }
+
+    /** Updates the max capacity for a zone (min 1). */
+    async function updateCapacity(index) {
+        const input = document.getElementById(`capacityInput_${index}`);
+        const zone  = state.venues[index];
+        if (!zone || !input) return;
+
+        const raw = parseInt(input.value, 10);
+        if (Number.isNaN(raw)) { toast("Enter a whole number for capacity.", "error"); return; }
+        const clamped = Math.max(1, raw);
+
+        if (state.live && zone.id != null && auth.isAdmin) {
+            try {
+                const updated = await apiFetch(`/venues/${zone.id}`, {
+                    method: "PATCH", auth: true, body: { capacity: clamped }
+                });
+                Object.assign(zone, fromApiVenue(updated));
+                toast(`${zone.name} capacity set to ${updated.capacity} on the backend.`, "success");
+            } catch (err) {
+                toast(`Backend rejected the capacity change: ${err.message}`, "error");
+                zone.max = clamped;
+            }
+        } else {
+            zone.max = clamped;
+            toast(`${zone.name} capacity updated locally.${state.live ? " Log in as admin to persist to the backend." : ""}`,
+                  state.live ? "warn" : "info");
+        }
+        render();
+    }
+
+    /** Next free "Zone N" style name, so POST /venues never hits the unique-name 409. */
+    function nextZoneName() {
+        const used = new Set(state.venues.map(v => v.name.toLowerCase()));
+        let n = state.venues.length + 1;
+        while (used.has(`zone ${n}`.toLowerCase())) n += 1;
+        return `Zone ${n}`;
+    }
+
+    /** Adds a venue: POST /venues as admin, otherwise append locally. */
+    async function addVenue() {
+        const name = nextZoneName();
+
+        if (state.live && auth.isAdmin) {
+            try {
+                const created = await apiFetch("/venues", {
+                    method: "POST", auth: true,
+                    body: { name, capacity: 100, occupancy: 0 }
+                });
+                state.venues.push(fromApiVenue(created));
+                toast(`Created "${created.name}" on the backend.`, "success");
+                render();
+                return;
+            } catch (err) {
+                toast(`Could not create venue: ${err.message}`, "error");
+            }
+        }
+
+        state.venues.push({ name, current: 0, max: 100 });
+        toast(`Added "${name}" locally.${state.live ? " Log in as admin to persist it." : ""}`,
+              state.live ? "warn" : "info");
+        render();
+    }
+
+    /** Removes a venue by index. Two clicks to confirm; DELETE /venues/{id} when admin. */
+    async function deleteVenue(index, btn) {
+        const zone = state.venues[index];
+        if (!zone) return;
+
+        if (btn && btn.dataset.armed !== "1") {
+            btn.dataset.armed = "1";
+            btn.dataset.original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check mr-1"></i>Confirm Delete';
+            btn.classList.add("ring-2", "ring-red-300");
+            setTimeout(() => {
+                if (btn.isConnected) {
+                    btn.dataset.armed = "0";
+                    btn.innerHTML = btn.dataset.original;
+                    btn.classList.remove("ring-2", "ring-red-300");
+                }
+            }, 1600);
+            return;
+        }
+
+        if (state.live && zone.id != null && auth.isAdmin) {
+            try {
+                await apiFetch(`/venues/${zone.id}`, { method: "DELETE", auth: true });
+                toast(`Deleted "${zone.name}" from the backend.`, "success");
+            } catch (err) {
+                toast(`Could not delete "${zone.name}": ${err.message}`, "error");
+                render();
+                return;
+            }
+        } else {
+            toast(`Removed "${zone.name}" locally.`, "info");
+        }
+        state.venues.splice(index, 1);
+        render();
+    }
+
+    /** Clears the whole workspace view (local only — never wipes the shared backend). */
+    function clearAllVenues(btn) {
+        if (btn && btn.dataset.armed !== "1") {
+            btn.dataset.armed = "1";
+            btn.dataset.original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check mr-1"></i>Confirm Clear';
+            btn.classList.add("ring-2", "ring-gray-400");
+            setTimeout(() => {
+                if (btn.isConnected) {
+                    btn.dataset.armed = "0";
+                    btn.innerHTML = btn.dataset.original;
+                    btn.classList.remove("ring-2", "ring-gray-400");
+                }
+            }, 1600);
+            return;
+        }
+        state.venues = [];
+        render();
+        toast(state.live
+            ? "Cleared the view locally. Live venues are still in the backend — hit Refresh live data."
+            : "Cleared all venues.", "info");
+    }
+
+    /* =================================================================
+       6. REDIRECTION ENGINE ("The Brains")
+
+          Red venues are those in the critical band: the backend flags them
+          (WARNING/CRITICAL/OVERCROWDED) and locally-added zones cross at 90%.
+          The suggestion is the lowest-percentage venue among the others that
+          is NOT itself red; if there is none the banner says so instead of
+          crashing (that was the old single-venue bug).
+       ================================================================= */
+    function evaluateRedirection() {
+        const redZones = state.venues.filter(z => statusBand(z, getPercentage(z)) === "critical");
+
+        if (redZones.length === 0) {
+            banner.classList.add("hidden");
+            return;
+        }
+
+        const red = redZones[0];
+        bannerTitle.textContent = `${red.name} is near capacity (${getPercentage(red)}%).`;
+        banner.classList.remove("hidden");
+
+        const candidates = state.venues
+            .filter(z => z !== red && statusBand(z, getPercentage(z)) !== "critical")
+            .sort((a, b) => getPercentage(a) - getPercentage(b));
+
+        if (candidates.length === 0) {
+            bannerSug.textContent = "all other zones are also critical — relocate manually.";
+            bannerReason.textContent = "";
+            return;
+        }
+
+        const lowest = candidates[0];
+        bannerSug.textContent = `${lowest.name} (${getPercentage(lowest)}% full, ${Math.max(lowest.max - lowest.current, 0)} free)`;
+        bannerReason.textContent = "";
+
+        // When the data is live, let the backend's redirection algorithm confirm
+        // (and explain) the choice: GET /venues/{id}/suggestion.
+        if (state.live && red.id != null) {
+            const seq = ++state.suggestionSeq;
+            apiFetch(`/venues/${red.id}/suggestion`)
+                .then(result => {
+                    if (seq !== state.suggestionSeq || !result || !result.needs_redirection) return;
+                    if (result.suggestion) {
+                        const s = result.suggestion;
+                        bannerSug.textContent = `${s.venue_name} (${s.occupancy_percentage}% full, ${s.available_capacity} free)`;
+                        bannerReason.textContent = `Backend: ${s.reason}`;
+                    } else if (result.reason) {
+                        bannerReason.textContent = `Backend: ${result.reason}`;
+                    }
+                })
+                .catch(() => { /* banner already shows the local suggestion */ });
+        }
+    }
+
+    /* =================================================================
+       7. EVENT HELPERS (select / edit / create)
+       ================================================================= */
+    function openEventEditor() {
+        document.getElementById("eventEditName").value = state.currentEvent.name;
+        document.getElementById("eventEditDate").value = state.currentEvent.date;
+        document.getElementById("eventEditDescription").value = state.currentEvent.description || "";
+        eventEditForm.classList.remove("hidden");
+        document.getElementById("eventEditName").focus();
+    }
+
+    function saveEventEdit(event) {
+        event.preventDefault();
+        const name = document.getElementById("eventEditName").value.trim();
+        const date = document.getElementById("eventEditDate").value;
+        const description = document.getElementById("eventEditDescription").value.trim();
+        if (!name) { toast("Event name cannot be empty.", "error"); return; }
+
+        state.currentEvent.name = name;
+        state.currentEvent.date = date;
+        state.currentEvent.description = description;
+
+        const stored = state.availableEvents.find(ev => ev.id === state.currentEvent.id);
+        if (stored) Object.assign(stored, { name, date, description });
+
+        eventEditForm.classList.add("hidden");
+        render();
+        toast(`Event saved: ${name} · ${date}`, "success");
+    }
+
+    function createEvent() {
+        const id = `event_${Date.now()}`;
+        const today = new Date().toISOString().slice(0, 10);
+        const ev = { id, name: "New Event", date: today, description: "Describe this event and its expected attendance" };
+        state.availableEvents.push(ev);
+        state.currentEvent = ev;
+        render();
+        openEventEditor();
+        toast("New event created — fill in the details and save.", "info");
+    }
+
+    /* =================================================================
+       8. FOOTER / FEEDBACK
+       ================================================================= */
+    function updateFooter() {
+        const eventLabel = `${state.currentEvent.name} · ${state.currentEvent.date}`;
+        const redCount = state.venues.filter(z => statusBand(z, getPercentage(z)) === "critical").length;
+        const mode = state.live
+            ? `<span class="text-xs font-bold uppercase ${auth.isAdmin ? "text-emerald-600" : "text-amber-600"}">${auth.isAdmin ? "live · admin" : "live · read-only"}</span>`
+            : '<span class="text-xs font-bold uppercase text-slate-500">demo mode</span>';
+
+        let summary;
+        if (state.venues.length === 0) {
+            summary = `<span class="font-semibold">${esc(eventLabel)}</span> — no venues in view yet. Add one below${state.live ? " or refresh live data" : ""}.`;
+        } else if (redCount > 0) {
+            summary = `<i class="fas fa-exclamation-triangle mr-1 text-red-500"></i><span class="font-semibold">${esc(eventLabel)}</span> — ${redCount} zone(s) at critical capacity. Redirection engine fired.`;
+        } else {
+            summary = `<i class="fas fa-check-circle mr-1 text-green-500"></i><span class="font-semibold">${esc(eventLabel)}</span> — all zones within safe limits.`;
+        }
+        footerText.innerHTML = `${summary} ${mode}`;
+    }
+
+    function updateClock() {
+        const time = new Date().toLocaleTimeString();
+        nowEl.textContent = time;
+    }
+
+    /* =================================================================
+       9. BACKEND SYNC (status strip, login, live venues)
+       ================================================================= */
+    function renderConnection() {
+        if (state.live) {
+            connDot.className = "h-2.5 w-2.5 rounded-full bg-emerald-400";
+            connText.textContent = auth.username
+                ? `Connected · ${state.venues.length} venue(s) · signed in as ${auth.username} (${auth.role})`
+                : `Connected · ${state.venues.length} venue(s) · not signed in`;
+        } else {
+            connDot.className = "h-2.5 w-2.5 rounded-full bg-amber-400";
+            connText.textContent = "Backend offline — running on local demo data";
+        }
+        loginBtn.classList.toggle("hidden", Boolean(auth.token));
+        logoutBtn.classList.toggle("hidden", !auth.token);
+    }
+
+    async function resolveApiBase() {
+        for (const base of API_BASES) {
+            try {
+                const res = await fetch(base + "/health", { cache: "no-store" });
+                if (res.ok) { API_BASE = base; return true; }
+            } catch (_) { /* try the next base */ }
+        }
+        return false;
+    }
+
+    async function loadVenues({ silent = false } = {}) {
+        try {
+            const venues = await apiFetch("/venues");
+            state.venues = (venues || []).map(fromApiVenue);
+            state.live = true;
+            lastUpdatedEl.innerHTML =
+                `<i class="fas fa-sync-alt mr-1"></i>Updated ${new Date().toLocaleTimeString()} from GET /venues`;
+            if (!silent) toast(`Loaded ${state.venues.length} live venue(s) from the backend.`, "success");
+            render();
+        } catch (err) {
+            state.live = false;
+            if (!silent) toast(`Live data unavailable (${err.message}). Showing local demo venues.`, "warn");
+            render();
+        }
+        renderConnection();
+    }
+
+    function handleLogin(event) {
+        event.preventDefault();
+        const username = document.getElementById("loginUsername").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        if (!username || !password) { toast("Enter a username and password.", "error"); return; }
+
+        apiFetch("/auth/login", { method: "POST", body: { username, password } })
+            .then(data => {
+                auth.save(data);
+                toast(`Signed in as ${data.username} (${data.role}). Admin writes are now persisted.`, "success");
+                renderConnection();
+                render();
+                return loadVenues({ silent: true });
+            })
+            .catch(err => toast(`Login failed: ${err.message}`, "error"));
+    }
+
+    function handleLogout() {
+        auth.clear();
+        toast("Signed out. Writes will stay local to this page.", "info");
+        renderConnection();
+        render();
+    }
+
+    /* =================================================================
+       10. EVENT WIRING + INITIAL BOOT
+       ================================================================= */
+    document.querySelectorAll("main").forEach(root => {
+        root.addEventListener("click", (event) => {
+            const trigger = event.target.closest("[data-action]");
+            if (!trigger) return;
+            const index = Number(trigger.dataset.index);
+            switch (trigger.dataset.action) {
+                case "update-current":  updateCurrent(index); break;
+                case "update-capacity": updateCapacity(index); break;
+                case "delete-venue":    deleteVenue(index, trigger); break;
+            }
+        });
+    });
+
+    document.getElementById("addVenueBtn").addEventListener("click", addVenue);
+    document.getElementById("clearVenuesBtn").addEventListener("click", (e) => clearAllVenues(e.currentTarget));
+    document.getElementById("refreshBtn").addEventListener("click", () => loadVenues());
+    document.getElementById("loginForm").addEventListener("submit", handleLogin);
+    logoutBtn.addEventListener("click", handleLogout);
+    document.getElementById("editEventBtn").addEventListener("click", openEventEditor);
+    document.getElementById("newEventBtn").addEventListener("click", createEvent);
+    eventEditForm.addEventListener("submit", saveEventEdit);
+    document.getElementById("eventEditCancel").addEventListener("click", () => eventEditForm.classList.add("hidden"));
+
+    (async function boot() {
+        render();                       // paint demo/local state immediately
+        renderConnection();
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        const online = await resolveApiBase();
+        if (online) {
+            await loadVenues({ silent: true });
+        } else {
+            state.live = false;
+            render();
+            renderConnection();
+        }
+    })();
+    </script>
+</body>
+</html>

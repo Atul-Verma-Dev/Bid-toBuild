@@ -3,9 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OminiView|Home</title>
+    <title>OmniView | Smart Event Crowd Management</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏛️</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
-<body>
-    Yehi hoga homepage
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+    <!-- ===================== HEADER ===================== -->
+    <header class="bg-gradient-to-r from-blue-900 via-indigo-800 to-purple-800 shadow-2xl">
+        <div class="container mx-auto px-6 py-10">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div>
+                    <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight flex items-center gap-3">
+                        <i class="fas fa-globe text-cyan-300"></i>OmniView
+                    </h1>
+                    <p class="mt-3 text-blue-100 text-lg max-w-2xl">
+                        Smart event crowd management — live occupancy, proactive redirection,
+                        staff deployment, and safety alerts for every zone of your venue.
+                    </p>
+                </div>
+                <div class="flex flex-col items-start gap-3">
+                    <div id="apiStatus"
+                         class="inline-flex items-center gap-3 rounded-full border border-slate-500/50 bg-slate-900/40 px-4 py-2 text-sm">
+                        <span id="apiStatusDot" class="h-2.5 w-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                        <span id="apiStatusText" class="font-semibold">Checking backend…</span>
+                    </div>
+                    <a href="/docs"
+                       class="text-sm text-cyan-200 hover:text-white underline underline-offset-4">
+                        <i class="fas fa-book mr-1"></i>Open API docs (Swagger)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===================== PAGE CARDS ===================== -->
+    <main class="container mx-auto px-6 py-12">
+        <h2 class="text-sm font-bold uppercase tracking-[0.25em] text-slate-400 mb-6">Dashboards</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <!-- Live Dashboard -->
+            <a href="/dashboard"
+               class="group rounded-2xl border border-slate-800 bg-slate-900/70 p-7 shadow-lg transition hover:-translate-y-1 hover:border-blue-500/60">
+                <div class="flex items-center gap-4">
+                    <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/15 border border-blue-500/40 text-2xl">
+                        <i class="fas fa-tachometer-alt text-blue-300"></i>
+                    </span>
+                    <h3 class="text-xl font-bold">Live Dashboard</h3>
+                </div>
+                <p class="mt-4 text-slate-300 text-sm leading-relaxed">
+                    Zone cards with editable occupancy and capacity, green / yellow / red status,
+                    and the flashing redirection banner when a zone hits capacity.
+                </p>
+                <p class="mt-5 text-blue-300 font-semibold text-sm">
+                    Open dashboard <i class="fas fa-arrow-right ml-1"></i>
+                </p>
+            </a>
+
+            <!-- Zone Monitor -->
+            <a href="/zones"
+               class="group rounded-2xl border border-slate-800 bg-slate-900/70 p-7 shadow-lg transition hover:-translate-y-1 hover:border-amber-500/60">
+                <div class="flex items-center gap-4">
+                    <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-500/40 text-2xl">
+                        <i class="fas fa-satellite-dish text-amber-300"></i>
+                    </span>
+                    <h3 class="text-xl font-bold">Zone Monitor</h3>
+                </div>
+                <p class="mt-4 text-slate-300 text-sm leading-relaxed">
+                    Command-center view: overcrowding alerts, crowd redirection recommendations,
+                    staff deployment, and a live crowd simulation with admin login.
+                </p>
+                <p class="mt-5 text-amber-300 font-semibold text-sm">
+                    Open monitor <i class="fas fa-arrow-right ml-1"></i>
+                </p>
+            </a>
+
+            <!-- Analytics -->
+            <a href="/analytics"
+               class="group rounded-2xl border border-slate-800 bg-slate-900/70 p-7 shadow-lg transition hover:-translate-y-1 hover:border-emerald-500/60">
+                <div class="flex items-center gap-4">
+                    <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-2xl">
+                        <i class="fas fa-chart-pie text-emerald-300"></i>
+                    </span>
+                    <h3 class="text-xl font-bold">Analytics Overview</h3>
+                </div>
+                <p class="mt-4 text-slate-300 text-sm leading-relaxed">
+                    Total attendees, active zones, overall occupancy and alerts — plus
+                    doughnut, comparison and trend charts refreshed every 5 seconds.
+                </p>
+                <p class="mt-5 text-emerald-300 font-semibold text-sm">
+                    Open analytics <i class="fas fa-arrow-right ml-1"></i>
+                </p>
+            </a>
+        </div>
+
+        <!-- ===================== LIVE SNAPSHOT ===================== -->
+        <section class="mt-12">
+            <h2 class="text-sm font-bold uppercase tracking-[0.25em] text-slate-400 mb-6">
+                Live snapshot <span id="snapshotTime" class="ml-2 normal-case tracking-normal text-slate-500 font-mono text-xs"></span>
+            </h2>
+            <div id="snapshotGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-slate-400 text-sm">
+                    Loading venues from <code class="text-cyan-300">GET /venues</code>…
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== DEMO CREDENTIALS ===================== -->
+        <section class="mt-12 rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+                <i class="fas fa-key text-yellow-300"></i>Demo accounts
+            </h2>
+            <p class="mt-2 text-slate-300 text-sm">
+                Writes (add / edit / delete venues) need an admin token. Sign in from the
+                dashboard strip or the zone monitor login button.
+            </p>
+            <div class="mt-4 flex flex-wrap gap-3 font-mono text-sm">
+                <span class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">admin / admin123 <span class="text-slate-500">(admin)</span></span>
+                <span class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">user / user123 <span class="text-slate-500">(read-only)</span></span>
+            </div>
+        </section>
+    </main>
+
+    <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+        © 2026 OmniView · Smart Event Crowd Management
+    </footer>
+
+    <script>
+        // Same-origin API calls: these pages are served by FastAPI itself.
+        const STATUS_CLASS = {
+            NORMAL: "border-emerald-500/50 bg-emerald-500/10 text-emerald-300",
+            MODERATE: "border-yellow-500/50 bg-yellow-500/10 text-yellow-300",
+            WARNING: "border-orange-500/50 bg-orange-500/10 text-orange-300",
+            CRITICAL: "border-red-500/50 bg-red-500/10 text-red-300",
+            OVERCROWDED: "border-red-500/50 bg-red-500/10 text-red-300"
+        };
+
+        function setApiStatus(online, text) {
+            document.getElementById("apiStatusDot").className =
+                "h-2.5 w-2.5 rounded-full " + (online ? "bg-emerald-400" : "bg-red-500");
+            document.getElementById("apiStatusText").textContent = text;
+        }
+
+        function renderSnapshot(venues) {
+            const grid = document.getElementById("snapshotGrid");
+            if (!Array.isArray(venues) || venues.length === 0) {
+                grid.innerHTML = `<div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-slate-400 text-sm">
+                    No venues yet. Open the dashboard and add one.</div>`;
+                return;
+            }
+            grid.innerHTML = venues.map(v => `
+                <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-semibold">${v.name}</span>
+                        <span class="rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${STATUS_CLASS[v.status] || "border-slate-700 text-slate-300"}">
+                            ${v.status}
+                        </span>
+                    </div>
+                    <div class="mt-3 flex items-end justify-between">
+                        <span class="text-2xl font-bold font-mono">${v.occupancy_percentage}%</span>
+                        <span class="text-xs text-slate-400 font-mono">${v.occupancy} / ${v.capacity}</span>
+                    </div>
+                    <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                        <div class="h-full rounded-full ${v.status === "NORMAL" ? "bg-emerald-500" : v.status === "MODERATE" ? "bg-yellow-500" : "bg-red-500"}"
+                             style="width: ${Math.min(v.occupancy_percentage, 100)}%"></div>
+                    </div>
+                </div>
+            `).join("");
+            document.getElementById("snapshotTime").textContent = "updated " + new Date().toLocaleTimeString();
+        }
+
+        async function loadSnapshot() {
+            try {
+                const res = await fetch("/venues");
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const venues = await res.json();
+                renderSnapshot(venues);
+                setApiStatus(true, `Backend online · ${venues.length} venue(s)`);
+            } catch (err) {
+                setApiStatus(false, "Backend offline");
+                document.getElementById("snapshotGrid").innerHTML = `
+                    <div class="rounded-xl border border-red-900/60 bg-red-950/40 p-5 text-red-200 text-sm">
+                        Could not reach <code>GET /venues</code> — is uvicorn running? (${err.message})
+                    </div>`;
+            }
+        }
+
+        loadSnapshot();
+        setInterval(loadSnapshot, 15000);
+    </script>
 </body>
 </html>

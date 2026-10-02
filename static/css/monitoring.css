@@ -20,6 +20,11 @@
   --zone-radius: 10px;
   --zone-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
 
+  /* Aliases kept for the legacy auth/toast styles further down. */
+  --panel: var(--zone-surface);
+  --primary: var(--zone-accent);
+  --danger: var(--zone-critical);
+
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -611,8 +616,9 @@
 
 .zone-monitor-module__recommendation-metrics span {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .zone-monitor-module__recommendation-metrics strong {
@@ -905,8 +911,9 @@
 
 .zone-monitor-module__staff-zone-meta span {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .zone-monitor-module__staff-zone-meta strong {
@@ -1374,4 +1381,160 @@
 /* Login panel base (shown by auth.js) */
 .zone-monitor-module__login {
   position: relative;
+}
+
+/* ============================================================
+   PAGE CHROME — navigation, connection strip, card focus states
+   ============================================================ */
+
+.zone-monitor-module__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.zone-monitor-module__nav a {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--zone-muted);
+  text-decoration: none;
+  padding: 6px 10px;
+  border: 1px solid var(--zone-border);
+  border-radius: 8px;
+  background: var(--zone-surface);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.zone-monitor-module__nav a:hover {
+  color: var(--zone-text);
+  border-color: #2d3a4a;
+  background: #16202c;
+}
+
+.zone-monitor-module__auth {
+  position: relative;
+  margin-left: 0;
+}
+
+.zone-monitor-module__connection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--zone-border);
+  border-radius: 8px;
+  background: var(--zone-surface);
+  font-size: 13px;
+  color: var(--zone-muted);
+}
+
+.zone-monitor-module__connection-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--zone-warning);
+  flex-shrink: 0;
+}
+
+.zone-monitor-module__connection-dot.is-online {
+  background: var(--zone-safe);
+}
+
+.zone-monitor-module__connection-dot.is-offline {
+  background: var(--zone-critical);
+}
+
+/* Login panel behaves like a dropdown under the auth bar */
+.zone-monitor-module__login {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  min-width: 280px;
+  margin-top: 0;
+  background: #121820;
+}
+
+/* Zone card focus + closed state */
+.zone-monitor-module__card {
+  cursor: pointer;
+}
+
+.zone-monitor-module__card--inactive {
+  opacity: 0.6;
+}
+
+.zone-monitor-module__card.active {
+  outline: 2px solid var(--zone-accent);
+  outline-offset: 2px;
+}
+
+/* Lists inside the alert / recommendation panels */
+.zone-monitor-module__alerts-list,
+.zone-monitor-module__recommendations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.zone-monitor-module__alerts-count--active {
+  color: var(--zone-critical);
+  border-color: var(--zone-critical);
+}
+
+/* Toast placement (the toast is appended to <body>) */
+.zone-monitor-module__toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  max-width: min(420px, calc(100vw - 40px));
+}
+
+/* ============================================================
+   ZONE CARD HOURS (used by the grid cards)
+   ============================================================ */
+
+.zone-monitor-module__hours {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--zone-border);
+  font-size: 13px;
+  color: var(--zone-muted);
+  flex-wrap: wrap;
+}
+
+.zone-monitor-module__open-badge {
+  font-weight: 700;
+  color: var(--zone-safe);
+}
+
+.zone-monitor-module__open-badge--closed {
+  color: var(--zone-critical);
+}
+
+.zone-monitor-module__hours-text {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+/* ============================================================
+   STAFF DEPLOYMENT — extra states
+   ============================================================ */
+
+.zone-monitor-module__staff-zone-status--safe {
+  color: var(--zone-safe);
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid var(--zone-safe);
+}
+
+.zone-monitor-module__staff-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
 }

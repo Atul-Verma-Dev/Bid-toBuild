@@ -1,488 +1,200 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>Zone Monitor</title>
-
+  <title>OmniView | Zone Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
   <link rel="stylesheet" href="/static/css/monitoring.css">
 </head>
-
 <body>
 
   <!--
     ============================================================
-    ZONE MONITORING
-    Standalone HTML page for event crowd monitoring.
-
-    Required files:
-      - zone-monitor.html
-      - monitoring.css
-      - monitoring.js
-
-    The page uses monitoring.js for:
-      - Zone cards
-      - Overcrowding alerts
-      - Crowd redirection
-      - Staff deployment
-      - Crowd simulation
-      - Authentication UI
+    ZONE MONITORING — served by FastAPI at /zones
+    Assets: /static/css/monitoring.css + /static/js/monitoring.js
+    Live data: GET /venues (public) · writes need POST /auth/login (admin)
     ============================================================
   -->
 
   <main class="zone-monitor-module" aria-label="Zone monitoring">
 
-```
-<!-- Header -->
-<header class="zone-monitor-module__header">
+    <!-- Header -->
+    <header class="zone-monitor-module__header">
 
-  <h1 class="zone-monitor-module__title">
-    Zone Monitor
-  </h1>
+      <h1 class="zone-monitor-module__title">Zone Monitor</h1>
 
-  <div class="zone-monitor-module__auth" id="auth-bar">
+      <nav class="zone-monitor-module__nav">
+        <a href="/">Home</a>
+        <a href="/dashboard">Live Dashboard</a>
+        <a href="/analytics">Analytics</a>
+      </nav>
 
-    <button id="login-open" type="button">
-      Login / Demo
-    </button>
+      <div class="zone-monitor-module__auth" id="auth-bar">
 
-    <div
-      id="login-panel"
-      class="zone-monitor-module__login hidden"
-    >
+        <button id="login-open" type="button">Login / Demo</button>
 
-      <div class="zone-monitor-module__login-box">
+        <div id="login-panel" class="zone-monitor-module__login hidden">
+          <div class="zone-monitor-module__login-box">
 
-        <h2 id="login-title">
-          Admin log in
-        </h2>
+            <h2 id="login-title">Admin log in</h2>
 
-        <p id="login-hint">
-          <a
-            href="#"
-            id="demo-account-link"
-          >
-            Need a demo account?
-          </a>
-        </p>
+            <p id="login-hint">
+              <a href="#" id="demo-account-link">Need a demo account?</a>
+            </p>
 
-        <form
-          id="login-form"
-          autocomplete="off"
-        >
+            <form id="login-form" autocomplete="off">
+              <input id="login-username" type="text" placeholder="Username" autocomplete="username" required>
+              <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required>
+              <button type="submit">Log in</button>
+              <span id="login-error" class="zone-monitor-module__text-error"></span>
+            </form>
 
-          <input
-            id="login-username"
-            type="text"
-            placeholder="Username"
-            autocomplete="username"
-            required
-          >
+            <button id="login-cancel" class="zone-monitor-module__btn-ghost" type="button">Cancel</button>
 
-          <input
-            id="login-password"
-            type="password"
-            placeholder="Password"
-            autocomplete="current-password"
-            required
-          >
-
-          <button type="submit">
-            Log in
-          </button>
-
-          <span
-            id="login-error"
-            class="zone-monitor-module__text-error"
-          ></span>
-
-        </form>
-
-        <button
-          id="login-cancel"
-          class="zone-monitor-module__btn-ghost"
-          type="button"
-        >
-          Cancel
-        </button>
-
-      </div>
-
-    </div>
-
-    <div
-      id="session-bar"
-      class="zone-monitor-module__session hidden"
-    >
-
-      <span id="session-role"></span>
-
-      <button
-        id="logout"
-        type="button"
-      >
-        Log out
-      </button>
-
-    </div>
-
-  </div>
-
-</header>
-
-
-<!-- Zone Cards -->
-<section
-  class="zone-monitor-module__grid"
-  id="zone-monitor__grid"
-  aria-label="Event zones"
->
-  <!-- Zone cards are generated dynamically by monitoring.js -->
-</section>
-
-
-<!-- Monitoring Panels -->
-<section
-  class="zone-monitor-module__panels"
-  id="zone-monitor__panels"
->
-
-  <!-- Overcrowding Alerts -->
-  <section
-    class="zone-monitor-module__alerts-panel"
-    id="zone-monitor-alerts"
-  >
-
-    <div class="zone-monitor-module__alerts-header">
-
-      <h2 class="zone-monitor-module__alerts-title">
-        Overcrowding Alerts
-      </h2>
-
-      <span
-        class="zone-monitor-module__alerts-count"
-        id="alert-count"
-      >
-        0 active
-      </span>
-
-    </div>
-
-    <div
-      class="zone-monitor-module__alerts-list"
-      id="alert-list"
-    >
-      <!-- Alerts are rendered by monitoring.js -->
-    </div>
-
-  </section>
-
-
-  <!-- Crowd Redirection Recommendations -->
-  <section
-    class="zone-monitor-module__recommendations-panel"
-    id="zone-monitor-recommendations"
-  >
-
-    <div class="zone-monitor-module__recommendations-header">
-
-      <h2 class="zone-monitor-module__recommendations-title">
-        Crowd Redirection
-      </h2>
-
-      <span
-        class="zone-monitor-module__recommendations-count"
-        id="recommendation-count"
-      >
-        0 options
-      </span>
-
-    </div>
-
-    <div
-      class="zone-monitor-module__recommendations-list"
-      id="recommendation-list"
-    >
-      <!-- Recommendations are rendered by monitoring.js -->
-    </div>
-
-  </section>
-
-
-  <!-- Staff Deployment -->
-  <section
-    class="zone-monitor-module__staff-panel"
-    id="staff-panel"
-  >
-
-    <div class="zone-monitor-module__staff-header">
-
-      <h2 class="zone-monitor-module__staff-title">
-        Staff Deployment
-      </h2>
-
-      <span
-        class="zone-monitor-module__staff-count"
-        id="staff-total"
-      >
-        0 total
-      </span>
-
-    </div>
-
-
-    <!-- Staff Summary -->
-    <div class="zone-monitor-module__staff-summary">
-
-      <div class="zone-monitor-module__staff-summary-card">
-
-        <span class="zone-monitor-module__staff-summary-label">
-          Total Staff
-        </span>
-
-        <span
-          class="zone-monitor-module__staff-summary-value"
-          id="staff-summary-total"
-        >
-          0
-        </span>
-
-      </div>
-
-
-      <div class="zone-monitor-module__staff-summary-card">
-
-        <span class="zone-monitor-module__staff-summary-label">
-          Available
-        </span>
-
-        <span
-          class="zone-monitor-module__staff-summary-value zone-monitor-module__staff-summary-value--available"
-          id="staff-summary-available"
-        >
-          0
-        </span>
-
-      </div>
-
-
-      <div class="zone-monitor-module__staff-summary-card">
-
-        <span class="zone-monitor-module__staff-summary-label">
-          Deployed
-        </span>
-
-        <span
-          class="zone-monitor-module__staff-summary-value zone-monitor-module__staff-summary-value--deployed"
-          id="staff-summary-deployed"
-        >
-          0
-        </span>
-
-      </div>
-
-
-      <div class="zone-monitor-module__staff-summary-card">
-
-        <span class="zone-monitor-module__staff-summary-label">
-          Busy
-        </span>
-
-        <span
-          class="zone-monitor-module__staff-summary-value zone-monitor-module__staff-summary-value--busy"
-          id="staff-summary-busy"
-        >
-          0
-        </span>
-
-      </div>
-
-    </div>
-
-
-    <!-- Per-zone staff -->
-    <div
-      class="zone-monitor-module__staff-grid"
-      id="staff-grid"
-    >
-      <!-- Staff zones are rendered by monitoring.js -->
-    </div>
-
-  </section>
-
-
-  <!-- Crowd Simulation -->
-  <section
-    class="zone-monitor-module__simulation-panel"
-    id="simulation-panel"
-  >
-
-    <div class="zone-monitor-module__simulation-header">
-
-      <h2 class="zone-monitor-module__simulation-title">
-        Crowd Simulation
-      </h2>
-
-
-      <div class="zone-monitor-module__simulation-controls">
-
-        <!-- Zone selector -->
-        <div class="zone-monitor-module__simulation-controls-group">
-
-          <span class="zone-monitor-module__simulation-controls-label">
-            Zone
-          </span>
-
-          <select
-            class="zone-monitor-module__simulation-target-select"
-            id="simulation-zone-select"
-          >
-            <option value="1">Main Stage</option>
-            <option value="2">Food Court</option>
-            <option value="3">Gaming Arena</option>
-            <option value="4">Exhibition Hall</option>
-            <option value="5">Registration Area</option>
-          </select>
-
+          </div>
         </div>
 
-
-        <!-- Decrease -->
-        <div class="zone-monitor-module__simulation-controls-group">
-
-          <span class="zone-monitor-module__simulation-controls-label">
-            Decrease
-          </span>
-
-          <button
-            type="button"
-            class="zone-monitor-module__simulation-controls-btn"
-            data-simulation-action="decrease"
-            data-step="10"
-          >
-            -10
-          </button>
-
-          <button
-            type="button"
-            class="zone-monitor-module__simulation-controls-btn"
-            data-simulation-action="decrease"
-            data-step="50"
-          >
-            -50
-          </button>
-
-        </div>
-
-
-        <!-- Increase -->
-        <div class="zone-monitor-module__simulation-controls-group">
-
-          <span class="zone-monitor-module__simulation-controls-label">
-            Increase
-          </span>
-
-          <button
-            type="button"
-            class="zone-monitor-module__simulation-controls-btn"
-            data-simulation-action="increase"
-            data-step="10"
-          >
-            +10
-          </button>
-
-          <button
-            type="button"
-            class="zone-monitor-module__simulation-controls-btn"
-            data-simulation-action="increase"
-            data-step="50"
-          >
-            +50
-          </button>
-
-        </div>
-
-
-        <!-- Crowd Surge -->
-        <div class="zone-monitor-module__simulation-controls-group">
-
-          <button
-            type="button"
-            class="zone-monitor-module__simulation-controls-btn zone-monitor-module__simulation-controls-btn--surge"
-            id="simulation-surge"
-          >
-            SIMULATE CROWD SURGE
-          </button>
-
+        <div id="session-bar" class="zone-monitor-module__session hidden">
+          <span id="session-role"></span>
+          <button id="logout" type="button">Log out</button>
         </div>
 
       </div>
 
+    </header>
+
+    <!-- Connection status -->
+    <div class="zone-monitor-module__connection" id="connection-bar">
+      <span class="zone-monitor-module__connection-dot" id="connection-dot"></span>
+      <span id="connection-text">Connecting to the backend…</span>
     </div>
 
+    <!-- Zone Cards -->
+    <section class="zone-monitor-module__grid" id="zone-monitor__grid" aria-label="Event zones">
+      <!-- Zone cards are generated dynamically by monitoring.js -->
+    </section>
 
-    <!-- Active Simulation -->
-    <div
-      class="zone-monitor-module__simulation-active"
-      id="simulation-active"
-    >
+    <!-- Monitoring Panels -->
+    <section class="zone-monitor-module__panels" id="zone-monitor__panels">
 
-      <div class="zone-monitor-module__simulation-active-top">
+      <!-- Overcrowding Alerts -->
+      <section class="zone-monitor-module__alerts-panel" id="zone-monitor-alerts">
+        <div class="zone-monitor-module__alerts-header">
+          <h2 class="zone-monitor-module__alerts-title">Overcrowding Alerts</h2>
+          <span class="zone-monitor-module__alerts-count" id="alert-count">0 active</span>
+        </div>
+        <div class="zone-monitor-module__alerts-list" id="alert-list">
+          <!-- Alerts are rendered by monitoring.js -->
+        </div>
+      </section>
 
-        <span
-          class="zone-monitor-module__simulation-active-name"
-          id="simulation-active-name"
-        >
-          Main Stage
-        </span>
+      <!-- Crowd Redirection Recommendations -->
+      <section class="zone-monitor-module__recommendations-panel" id="zone-monitor-recommendations">
+        <div class="zone-monitor-module__recommendations-header">
+          <h2 class="zone-monitor-module__recommendations-title">Crowd Redirection</h2>
+          <span class="zone-monitor-module__recommendations-count" id="recommendation-count">0 options</span>
+        </div>
+        <div class="zone-monitor-module__recommendations-list" id="recommendation-list">
+          <!-- Recommendations are rendered by monitoring.js -->
+        </div>
+      </section>
 
-        <span
-          class="zone-monitor-module__simulation-active-status"
-          id="simulation-active-status"
-        >
-          SAFE
-        </span>
+      <!-- Staff Deployment -->
+      <section class="zone-monitor-module__staff-panel" id="staff-panel">
+        <div class="zone-monitor-module__staff-header">
+          <h2 class="zone-monitor-module__staff-title">Staff Deployment</h2>
+          <span class="zone-monitor-module__staff-count" id="staff-total">0 total</span>
+        </div>
 
-      </div>
+        <!-- Staff Summary -->
+        <div class="zone-monitor-module__staff-summary">
+          <div class="zone-monitor-module__staff-summary-card">
+            <span class="zone-monitor-module__staff-summary-label">Total Staff</span>
+            <span class="zone-monitor-module__staff-summary-value" id="staff-summary-total">0</span>
+          </div>
+          <div class="zone-monitor-module__staff-summary-card">
+            <span class="zone-monitor-module__staff-summary-label">Available</span>
+            <span class="zone-monitor-module__staff-summary-value zone-monitor-module__staff-summary-value--available" id="staff-summary-available">0</span>
+          </div>
+          <div class="zone-monitor-module__staff-summary-card">
+            <span class="zone-monitor-module__staff-summary-label">Deployed</span>
+            <span class="zone-monitor-module__staff-summary-value zone-monitor-module__staff-summary-value--deployed" id="staff-summary-deployed">0</span>
+          </div>
+          <div class="zone-monitor-module__staff-summary-card">
+            <span class="zone-monitor-module__staff-summary-label">Busy</span>
+            <span class="zone-monitor-module__staff-summary-value zone-monitor-module__staff-summary-value--busy" id="staff-summary-busy">0</span>
+          </div>
+        </div>
 
+        <!-- Per-zone staff -->
+        <div class="zone-monitor-module__staff-grid" id="staff-grid">
+          <!-- Staff zones are rendered by monitoring.js -->
+        </div>
+      </section>
 
-      <div class="zone-monitor-module__simulation-active-meta">
+      <!-- Crowd Simulation -->
+      <section class="zone-monitor-module__simulation-panel" id="simulation-panel">
+        <div class="zone-monitor-module__simulation-header">
+          <h2 class="zone-monitor-module__simulation-title">Crowd Simulation</h2>
 
-        <span>
-          Current occupancy
-          <strong id="simulation-active-occupancy">
-            0 / 0
-          </strong>
-        </span>
+          <div class="zone-monitor-module__simulation-controls">
 
-        <span>
-          Occupancy percentage
-          <strong id="simulation-active-percentage">
-            0%
-          </strong>
-        </span>
+            <!-- Zone selector -->
+            <div class="zone-monitor-module__simulation-controls-group">
+              <span class="zone-monitor-module__simulation-controls-label">Zone</span>
+              <select class="zone-monitor-module__simulation-target-select" id="simulation-zone-select">
+                <option value="1">Loading zones…</option>
+              </select>
+            </div>
 
-        <span>
-          Crowd growth rate
-          <strong id="simulation-active-growth">
-            0 people/min
-          </strong>
-        </span>
+            <!-- Decrease -->
+            <div class="zone-monitor-module__simulation-controls-group">
+              <span class="zone-monitor-module__simulation-controls-label">Decrease</span>
+              <button type="button" class="zone-monitor-module__simulation-controls-btn"
+                      data-simulation-action="decrease" data-step="10">-10</button>
+              <button type="button" class="zone-monitor-module__simulation-controls-btn"
+                      data-simulation-action="decrease" data-step="50">-50</button>
+            </div>
 
-      </div>
+            <!-- Increase -->
+            <div class="zone-monitor-module__simulation-controls-group">
+              <span class="zone-monitor-module__simulation-controls-label">Increase</span>
+              <button type="button" class="zone-monitor-module__simulation-controls-btn"
+                      data-simulation-action="increase" data-step="10">+10</button>
+              <button type="button" class="zone-monitor-module__simulation-controls-btn"
+                      data-simulation-action="increase" data-step="50">+50</button>
+            </div>
 
-    </div>
+            <!-- Crowd Surge -->
+            <div class="zone-monitor-module__simulation-controls-group">
+              <button type="button"
+                      class="zone-monitor-module__simulation-controls-btn zone-monitor-module__simulation-controls-btn--surge"
+                      id="simulation-surge">SIMULATE CROWD SURGE</button>
+            </div>
 
-  </section>
+          </div>
+        </div>
 
-</section>
-```
+        <!-- Active Simulation -->
+        <div class="zone-monitor-module__simulation-active" id="simulation-active">
+          <div class="zone-monitor-module__simulation-active-top">
+            <span class="zone-monitor-module__simulation-active-name" id="simulation-active-name">—</span>
+            <span class="zone-monitor-module__simulation-active-status" id="simulation-active-status">—</span>
+          </div>
+
+          <div class="zone-monitor-module__simulation-active-meta">
+            <span>Current occupancy <strong id="simulation-active-occupancy">0 / 0</strong></span>
+            <span>Occupancy percentage <strong id="simulation-active-percentage">0%</strong></span>
+            <span>Crowd growth rate <strong id="simulation-active-growth">0 people/min</strong></span>
+          </div>
+        </div>
+
+      </section>
+
+    </section>
 
   </main>
-
-  <!-- JavaScript -->
 
   <script src="/static/js/monitoring.js"></script>
 

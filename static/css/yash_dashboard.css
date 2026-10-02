@@ -350,28 +350,27 @@
   flex-direction: column;
 }
 
+/* Compact chart header: the canvas below it does the heavy lifting. */
 .yash-chart-placeholder {
-  flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  min-height: 220px;
-  border: 2px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card-2);
-  text-align: center;
-  padding: 20px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
 }
 
 .yash-chart-icon {
-  font-size: 32px;
+  font-size: 22px;
 }
 
 .yash-chart-title {
   font-size: 15px;
   font-weight: 600;
+  margin-right: auto;
 }
 
 .yash-chart-badge {
@@ -508,5 +507,47 @@
 
   .yash-analytics-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+   PAGE SHELL — cross-page navigation + body reset
+   ============================================================ */
+
+body {
+  margin: 0;
+  background: #080F1F;
+}
+
+.yash-topnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 28px;
+  background: #0b1526;
+  border-bottom: 1px solid #1E3050;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.yash-topnav a {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8A90A6;
+  text-decoration: none;
+  padding: 6px 12px;
+  border: 1px solid #1E3050;
+  border-radius: 8px;
+  background: #111C30;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.yash-topnav a:hover {
+  color: #E8EAF0;
+  border-color: #3B82F6;
+}
+
+@media (max-width: 768px) {
+  .yash-topnav {
+    padding: 12px 18px;
   }
 }
