@@ -341,6 +341,23 @@
         return venue.current_event || null;
     }
 
+    /**
+     * One shared reading of a venue's open/closed state. Every page area uses it,
+     * so the badge, the button and the backend always agree:
+     *   open + auto    → open inside its opening window
+     *   open + open    → forced open outside the window (extended hours)
+     *   closed + auto  → shut because the window is over
+     *   closed + closed → shut by an operator
+     */
+    function venueState(zone) {
+        const override = zone.openOverride || "auto";
+        const open = zone.active !== false;
+        const label = open
+            ? (override === "open" ? "Open · extended hours" : "Open")
+            : (override === "closed" ? "Closed by operator" : "Closed · outside hours");
+        return { open, override, label };
+    }
+
     /** Staff currently deployed to a venue (0 when the pool has not loaded). */
     function staffForVenue(venue) {
         if (!state.staff || !Array.isArray(state.staff.per_venue)) return 0;
@@ -482,7 +499,7 @@
             active: raw.is_active,
             hours: `${raw.opening_time}–${raw.closing_time}`,
             percentage: raw.occupancy_percentage,
-            isClosed: Boolean(raw.is_closed),
+            openOverride: raw.open_override || "auto",
             current_event: raw.current_event || null
         };
     }
@@ -545,10 +562,9 @@
 
             const metaBits = [];
             if (zone.id != null) metaBits.push(`<span class="text-xs text-gray-500 font-mono">#${zone.id}</span>`);
-            if (zone.hours) metaBits.push(zone.isClosed
-                ? `<span class="text-xs text-red-600 font-semibold"><i class="fas fa-lock mr-1"></i>Closed by operator</span>`
-                : `<span class="text-xs ${zone.active ? "text-green-600" : "text-red-500"}">
-                    <i class="fas fa-clock mr-1"></i>${zone.active ? "Open" : "Closed"} · ${esc(zone.hours)}</span>`);
+            const venue = venueState(zone);
+            if (zone.hours) metaBits.push(`<span class="text-xs ${venue.open ? "text-green-600" : "text-red-600"}">
+                    <i class="fas fa-${venue.open ? "door-open" : "door-closed"} mr-1"></i>${esc(venue.label)} · ${esc(zone.hours)}</span>`);
 
             // What is happening in this venue right now.
             const event = eventForVenue(zone);
@@ -642,15 +658,28 @@
                         </div>
                     </div>
 
-                    <!-- (d) Open / close this venue -->
+                    <!-- (d) Open / close this venue (always flips the visible state) -->
                     <div class="mt-3 pt-3 border-t border-gray-200">
-                        <button type="button" data-action="toggle-venue" data-index="${index}"
-                                class="w-full ${zone.isClosed
-                                    ? "bg-emerald-600 hover:bg-emerald-700"
-                                    : "bg-amber-500 hover:bg-amber-600"} text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
-                            <i class="fas fa-${zone.isClosed ? "lock-open" : "door-closed"} mr-1"></i>
-                            ${zone.isClosed ? "Re-open venue" : "Close venue"}
-                        </button>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <button type="button" data-action="toggle-venue" data-index="${index}"
+                                    data-override="${venue.open ? "closed" : "open"}"
+                                    class="flex-1 ${venue.open
+                                        ? "bg-amber-500 hover:bg-amber-600"
+                                        : "bg-emerald-600 hover:bg-emerald-700"} text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
+                                <i class="fas fa-${venue.open ? "door-closed" : "lock-open"} mr-1"></i>
+                                ${venue.open ? "Close venue" : "Open venue"}
+                            </button>
+                            ${venue.override === "auto" ? "" : `
+                            <button type="button" data-action="toggle-venue" data-index="${index}" data-override="auto"
+                                    class="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
+                                <i class="fas fa-clock-rotate-left mr-1"></i>Follow schedule
+                            </button>`}
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">
+                            ${venue.override === "auto"
+                                ? `Opening hours ${esc(zone.hours)} — open or close now to override them.`
+                                : `Opening hours are ${esc(zone.hours)}; an operator overrode them.`}
+                        </p>
                     </div>
 
                     <!-- (e) Remove venue -->
@@ -991,23 +1020,22 @@
     }
 
     /**
-     * Opens or closes a venue by hand. Closed venues stay closed to the public
-     * even inside their opening hours, and are never offered as a redirection
-     * destination.
+     * Opens or closes a venue by hand: 'open', 'closed', or 'auto' to follow the
+     * opening window again. Closed venues are never offered as a redirection
+     * destination, so the whole site sees the same state.
      */
-    async function toggleVenue(index) {
+    async function setVenueOverride(index, override) {
         const zone = state.venues[index];
         if (!zone) return;
-        if (blockWrite(zone.isClosed ? "Re-opening a venue" : "Closing a venue")) return;
+        if (blockWrite(override === "auto" ? "Syncing the venue with its schedule" : "Opening or closing a venue")) return;
 
         try {
             const updated = await apiFetch(`/venues/${zone.id}`, {
-                method: "PATCH", auth: true, body: { is_closed: !zone.isClosed }
+                method: "PATCH", auth: true, body: { open_override: override }
             });
             Object.assign(zone, fromApiVenue(updated));
-            toast(updated.is_closed
-                ? `${updated.name} is now closed to the public.`
-                : `${updated.name} is open again.`, "success");
+            const state = venueState(zone);
+            toast(`${updated.name}: ${state.label.toLowerCase()}.`, "success");
         } catch (err) {
             handleWriteError(err, `Could not change the status of “${zone.name}”`);
         }
@@ -1387,7 +1415,7 @@
                 case "update-current":  updateCurrent(index); break;
                 case "update-capacity": updateCapacity(index); break;
                 case "rename-venue":    renameVenue(index); break;
-                case "toggle-venue":    toggleVenue(index); break;
+                case "toggle-venue":    setVenueOverride(index, trigger.dataset.override); break;
                 case "delete-venue":    deleteVenue(index, trigger); break;
             }
         });

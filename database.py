@@ -53,7 +53,9 @@ CREATE TABLE IF NOT EXISTS venues (
     occupancy    INTEGER NOT NULL DEFAULT 0,
     opening_time TEXT NOT NULL DEFAULT '09:00',
     closing_time TEXT NOT NULL DEFAULT '21:00',
-    is_closed    INTEGER NOT NULL DEFAULT 0,
+    -- 'auto' follows the daily opening window, 'open' / 'closed' override it.
+    open_override TEXT NOT NULL DEFAULT 'auto'
+        CHECK (open_override IN ('auto', 'open', 'closed')),
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL
 );
@@ -104,7 +106,20 @@ def init_db() -> None:
 
 def _migrate(connection: sqlite3.Connection) -> None:
     """Add columns that were introduced after a database was first created."""
-    _ensure_column(connection, "venues", "is_closed", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(connection, "venues", "open_override", "TEXT NOT NULL DEFAULT 'auto'")
+
+    # Earlier builds stored a plain "closed by hand" flag; carry it over and
+    # drop the stale column where the local SQLite supports it.
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(venues)")}
+    if "is_closed" in columns:
+        connection.execute(
+            "UPDATE venues SET open_override = 'closed' "
+            "WHERE is_closed = 1 AND open_override = 'auto'"
+        )
+        try:
+            connection.execute("ALTER TABLE venues DROP COLUMN is_closed")
+        except sqlite3.OperationalError:  # pragma: no cover - old SQLite builds
+            pass
 
 
 def _ensure_column(

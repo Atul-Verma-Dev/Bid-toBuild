@@ -1,6 +1,7 @@
 """Pydantic request/response models. Field names are stable for the frontend."""
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -57,8 +58,9 @@ class VenueUpdate(BaseModel):
     occupancy: int | None = Field(default=None, ge=0)
     opening_time: str | None = Field(default=None, pattern=TIME_PATTERN)
     closing_time: str | None = Field(default=None, pattern=TIME_PATTERN)
-    is_closed: bool | None = Field(
-        default=None, description="Close (true) or re-open (false) the venue by hand"
+    open_override: Literal["auto", "open", "closed"] | None = Field(
+        default=None,
+        description="'auto' follows the opening window, 'open'/'closed' override it",
     )
 
 
@@ -85,7 +87,7 @@ class VenueOut(BaseModel):
     opening_time: str
     closing_time: str
     is_active: bool
-    is_closed: bool = False
+    open_override: Literal["auto", "open", "closed"] = "auto"
     created_at: str
     updated_at: str
     current_event: EventBrief | None = None
