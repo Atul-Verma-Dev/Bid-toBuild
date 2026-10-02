@@ -1538,3 +1538,36 @@
   justify-content: flex-end;
   margin-top: 10px;
 }
+
+/* ============================================================
+   REDIRECTION AMOUNT + SIMULATION HINT
+   ============================================================ */
+
+.zone-monitor-module__redirect-amount {
+  width: 84px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--zone-border);
+  background: var(--zone-bg);
+  color: var(--zone-text);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
+}
+
+.zone-monitor-module__redirect-amount:focus {
+  outline: none;
+  border-color: var(--zone-accent);
+}
+
+.zone-monitor-module__simulation-hint {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: var(--zone-muted);
+}
+
+.zone-monitor-module__simulation-hint.is-locked {
+  color: var(--zone-warning);
+  font-weight: 600;
+}

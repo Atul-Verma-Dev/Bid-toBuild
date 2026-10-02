@@ -28,12 +28,27 @@
   const STAFF_POOL_SIZE = 12;
   const STAFF_PER_DEPLOYMENT = 2;
 
+  // Acknowledged alerts survive reloads: { zoneId: severityLevel }.
+  // An alert stays dismissed until its zone becomes BUSIER than when it was acked.
+  const ACK_STORAGE_KEY = "omniview_ack_alerts";
+
+  function loadAcks() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(ACK_STORAGE_KEY));
+      return raw && typeof raw === "object" ? raw : {};
+    } catch (_) { return {}; }
+  }
+
+  function saveAcks() {
+    try { localStorage.setItem(ACK_STORAGE_KEY, JSON.stringify(state.acknowledged)); } catch (_) {}
+  }
+
   const state = {
     zones: [],
     focusZoneId: null,
     simulationZoneId: null,
     growth: {},                 // zone id -> last simulated delta
-    acknowledged: new Set(),    // alert ids the user dismissed
+    acknowledged: loadAcks(),   // { zoneId: severity already dismissed }
     staff: { total: STAFF_POOL_SIZE, available: STAFF_POOL_SIZE, deployed: 0 },
     live: false,
     lastSync: null
@@ -194,6 +209,11 @@
     return String(zone.status || SEVERITY_LABEL[severity(zone)]).toUpperCase();
   }
 
+  /** Occupancy changes are admin-only: they need a live backend and an admin token. */
+  function isWritable() {
+    return state.live && auth.isAdmin;
+  }
+
   /** Backend rule: only venues that are not busy and still have free space. */
   function redirectionCandidates(source) {
     return state.zones
@@ -305,6 +325,7 @@
           id: `zone-${zone.id}`,
           zone,
           severity: level >= 3 ? "critical" : "warning",
+          level,
           label: level >= 3 ? "Critical" : "Warning",
           message: level >= 3
             ? `${zone.name} has reached critical occupancy.`
@@ -320,7 +341,7 @@
     const list = $("alert-list");
     if (!list) return;
 
-    const alerts = buildAlerts().filter(a => !state.acknowledged.has(a.id));
+    const alerts = buildAlerts().filter(a => (state.acknowledged[a.zone.id] || 0) < a.level);
 
     const counter = $("alert-count");
     if (counter) {
@@ -366,7 +387,8 @@
             <button type="button" class="zone-monitor-module__ack-button" data-focus="${alert.zone.id}">
               Show redirection
             </button>
-            <button type="button" class="zone-monitor-module__ack-button" data-ack="${alert.id}">
+            <button type="button" class="zone-monitor-module__ack-button"
+                    data-ack="${alert.zone.id}" data-ack-level="${alert.level}">
               Acknowledge
             </button>
           </div>
@@ -374,8 +396,9 @@
       </div>`).join("");
 
     list.querySelectorAll("[data-ack]").forEach(btn => btn.addEventListener("click", () => {
-      state.acknowledged.add(btn.dataset.ack);
-      showToast("Alert acknowledged.", "success");
+      state.acknowledged[Number(btn.dataset.ack)] = Number(btn.dataset.ackLevel);
+      saveAcks();
+      showToast("Alert acknowledged — it stays dismissed after reload unless the zone gets busier.", "success");
       renderAlerts();
       renderRecommendations();
     }));
@@ -456,7 +479,9 @@
             </div>
             <div class="zone-monitor-module__recommendation-reason">Reason: ${escapeHtml(rec.reason)}</div>
             <div class="zone-monitor-module__recommendation-actions">
-              <button type="button" class="zone-monitor-module__redirect-button" data-redirect-to="${rec.zone.id}">
+              <button type="button" class="zone-monitor-module__redirect-button"
+                      data-redirect-to="${rec.zone.id}"
+                      ${isWritable() ? "" : 'disabled title="Admin login required to move attendees"'}>
                 REDIRECT HERE
               </button>
             </div>
@@ -464,24 +489,138 @@
       </div>`;
 
     list.querySelectorAll("[data-redirect-to]").forEach(btn => btn.addEventListener("click", () => {
-      const target = state.zones.find(z => z.id === Number(btn.dataset.redirectTo));
-      if (!target) return;
-
-      showToast(`Redirection activated: ${source.name} → ${target.name}.`, "success");
-      list.innerHTML = `
-        <div class="zone-monitor-module__activation">
-          <span class="zone-monitor-module__activation-icon">✅</span>
-          <span class="zone-monitor-module__activation-text">Redirect recommendation activated.</span>
-          <div class="zone-monitor-module__activation-actions">
-            <span class="zone-monitor-module__activation-notes">
-              ${escapeHtml(source.name)} → ${escapeHtml(target.name)} at ${new Date().toLocaleTimeString()}.
-            </span>
-            <button type="button" class="zone-monitor-module__activation-dismiss">Dismiss</button>
-          </div>
-        </div>`;
-      list.querySelector(".zone-monitor-module__activation-dismiss")
-        .addEventListener("click", renderRecommendations);
+      showRedirectConfirm(list, source.id, Number(btn.dataset.redirectTo));
     }));
+  }
+
+  /** Step 1 of a redirection: pick how many attendees to move. */
+  function showRedirectConfirm(list, sourceId, targetId) {
+    // Ids only — the 10-second sync replaces the zone objects, so a captured
+    // reference would go stale while the panel is open.
+    const source = state.zones.find(z => z.id === sourceId);
+    const target = state.zones.find(z => z.id === targetId);
+    if (!source || !target) {
+      showToast("Those zones are no longer available.", "error");
+      renderRecommendations();
+      return;
+    }
+
+    const free = Math.max(target.capacity - target.occupancy, 0);
+    const defaultAmount = Math.max(1, Math.min(20, source.occupancy));
+
+    list.innerHTML = `
+      <div class="zone-monitor-module__activation">
+        <span class="zone-monitor-module__activation-icon">➡️</span>
+        <span class="zone-monitor-module__activation-text">
+          Move attendees from <strong>${escapeHtml(source.name)}</strong>
+          to <strong>${escapeHtml(target.name)}</strong>
+          (${free} free spot(s) there)
+        </span>
+        <div class="zone-monitor-module__activation-actions">
+          <input type="number" min="1" step="1" value="${defaultAmount}" id="redirect-amount"
+                 class="zone-monitor-module__redirect-amount" aria-label="Number of attendees to move">
+          <button type="button" class="zone-monitor-module__redirect-button" id="redirect-confirm">
+            CONFIRM REDIRECT
+          </button>
+          <button type="button" class="zone-monitor-module__activation-dismiss" id="redirect-cancel">Cancel</button>
+        </div>
+        <p class="zone-monitor-module__activation-notes" id="redirect-preview"></p>
+      </div>`;
+
+    const amountEl = $("redirect-amount");
+    const preview = $("redirect-preview");
+
+    const clampAmount = () => {
+      const wanted = parseInt(amountEl.value, 10);
+      const amount = Math.max(1, Math.min(Number.isFinite(wanted) ? wanted : 1, source.occupancy));
+      amountEl.value = amount;
+      preview.textContent = `${source.name}: ${source.occupancy} → ${source.occupancy - amount} · `
+        + `${target.name}: ${target.occupancy} → ${target.occupancy + amount}`;
+      return amount;
+    };
+
+    amountEl.addEventListener("input", clampAmount);
+    clampAmount();
+    amountEl.focus();
+
+    $("redirect-cancel").addEventListener("click", renderRecommendations);
+    $("redirect-confirm").addEventListener("click", () => {
+      performRedirect(sourceId, targetId, clampAmount(), list);
+    });
+  }
+
+  /**
+   * Step 2: the real move. Two API writes (source down, target up); if the
+   * second fails the first is rolled back so no attendees are lost.
+   */
+  async function performRedirect(sourceId, targetId, amount, list) {
+    if (!isWritable()) {
+      showToast("Only an admin can move attendees. Log in as admin first.", "error");
+      renderRecommendations();
+      return;
+    }
+
+    // Re-resolve both zones so the move always uses the latest occupancy.
+    const source = state.zones.find(z => z.id === sourceId);
+    const target = state.zones.find(z => z.id === targetId);
+    if (!source || !target) {
+      showToast("Those zones are no longer available.", "error");
+      renderRecommendations();
+      return;
+    }
+
+    const safeAmount = Math.max(1, Math.min(amount, source.occupancy));
+    const before = { from: source.occupancy, to: target.occupancy };
+
+    try {
+      const movedFrom = await apiFetch(`/venues/${source.id}/occupancy`, {
+        method: "PATCH", auth: true, body: { occupancy: source.occupancy - safeAmount }
+      });
+
+      let movedTo;
+      try {
+        movedTo = await apiFetch(`/venues/${target.id}/occupancy`, {
+          method: "PATCH", auth: true, body: { occupancy: target.occupancy + safeAmount }
+        });
+      } catch (err) {
+        await apiFetch(`/venues/${source.id}/occupancy`, {
+          method: "PATCH", auth: true, body: { occupancy: before.from }
+        }).catch(() => {});
+        throw err;
+      }
+
+      Object.assign(source, normalizeZone(movedFrom));
+      Object.assign(target, normalizeZone(movedTo));
+      state.growth[source.id] = -safeAmount;
+
+      refreshAll();
+      showRedirectResult(list, source, target, safeAmount, before);
+      showToast(`Moved ${safeAmount} attendee(s): ${source.name} ${before.from} → ${source.occupancy}, `
+        + `${target.name} ${before.to} → ${target.occupancy}.`, "success");
+    } catch (err) {
+      showToast(`Redirection failed: ${err.message}`, "error");
+      renderRecommendations();
+    }
+  }
+
+  function showRedirectResult(list, source, target, amount, before) {
+    list.innerHTML = `
+      <div class="zone-monitor-module__activation">
+        <span class="zone-monitor-module__activation-icon">✅</span>
+        <span class="zone-monitor-module__activation-text">
+          Moved ${amount} attendee(s) from ${escapeHtml(source.name)} to ${escapeHtml(target.name)}.
+        </span>
+        <div class="zone-monitor-module__activation-actions">
+          <span class="zone-monitor-module__activation-notes">
+            ${escapeHtml(source.name)}: ${before.from} → ${source.occupancy} ·
+            ${escapeHtml(target.name)}: ${before.to} → ${target.occupancy} ·
+            ${new Date().toLocaleTimeString()}
+          </span>
+          <button type="button" class="zone-monitor-module__activation-dismiss">Dismiss</button>
+        </div>
+      </div>`;
+    list.querySelector(".zone-monitor-module__activation-dismiss")
+      .addEventListener("click", renderRecommendations);
   }
 
   /* ------------------------------------------------------------------
@@ -594,6 +733,7 @@
       $("simulation-active-occupancy").textContent = "0 / 0";
       $("simulation-active-percentage").textContent = "0%";
       $("simulation-active-growth").textContent = "0 people/min";
+      applySimulationPermissions();
       return;
     }
 
@@ -618,6 +758,26 @@
     const growth = state.growth[active.id] || 0;
     $("simulation-active-growth").textContent =
       `${growth >= 0 ? "+" : ""}${growth} people/min (simulated)`;
+
+    applySimulationPermissions();
+  }
+
+  /** The simulation writes real occupancy, so it is admin-only. */
+  function applySimulationPermissions() {
+    const writable = isWritable();
+
+    document.querySelectorAll("[data-simulation-action], #simulation-surge").forEach(btn => {
+      btn.disabled = !writable;
+      btn.title = writable ? "" : "Admin login required to change occupancy.";
+    });
+
+    const hint = $("simulation-hint");
+    if (hint) {
+      hint.textContent = writable
+        ? "Admin mode — ±10 / ±50 / surge write the zone's occupancy straight to the backend."
+        : "Read-only — log in as admin to run the simulation (it changes real occupancy).";
+      hint.classList.toggle("is-locked", !writable);
+    }
   }
 
   /** Applies +/- delta to a zone, locally and — when admin — on the backend. */
@@ -625,29 +785,31 @@
     const zone = activeSimulationZone();
     if (!zone) { showToast("Load a zone before simulating.", "error"); return; }
 
+    if (!isWritable()) {
+      showToast("The simulation changes real occupancy — log in as admin first.", "error");
+      return;
+    }
+
     // Allow the sim to push a zone over capacity (the backend accepts it and
     // marks the venue OVERCROWDED) — capped at 125% so numbers stay sane.
     const ceiling = Math.round(zone.capacity * 1.25);
     const next = Math.max(0, Math.min(ceiling, zone.occupancy + delta));
     const applied = next - zone.occupancy;
-    zone.occupancy = next;
-    zone.available_capacity = Math.max(zone.capacity - next, 0);
-    state.growth[zone.id] = applied;
 
-    if (state.live && auth.isAdmin) {
-      try {
-        const updated = await apiFetch(`/venues/${zone.id}/occupancy`, {
-          method: "PATCH", auth: true, body: { occupancy: next }
-        });
-        Object.assign(zone, normalizeZone(updated));
-        showToast(`${zone.name} → ${updated.occupancy} occupants (${updated.status}) saved to the backend.`, "success");
-      } catch (err) {
-        showToast(`Simulation is local only: ${err.message}`, "error");
-      }
-    } else {
-      showToast(`${zone.name} → ${next} occupants (local simulation).`
-        + (state.live ? " Log in as admin to persist changes." : ""),
-        state.live ? "info" : "success");
+    if (applied === 0) {
+      showToast(`${zone.name} is already at the simulation limit (${zone.occupancy}).`, "info");
+      return;
+    }
+
+    try {
+      const updated = await apiFetch(`/venues/${zone.id}/occupancy`, {
+        method: "PATCH", auth: true, body: { occupancy: next }
+      });
+      Object.assign(zone, normalizeZone(updated));
+      state.growth[zone.id] = applied;
+      showToast(`${zone.name} → ${updated.occupancy} occupants (${updated.status}) saved to the backend.`, "success");
+    } catch (err) {
+      showToast(`Simulation failed: ${err.message}`, "error");
     }
 
     refreshAll();

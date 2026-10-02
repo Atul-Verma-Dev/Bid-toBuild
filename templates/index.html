@@ -83,6 +83,13 @@
         </div>
     </div>
 
+    <!-- Read-only / admin-mode notice (text + colours set by JS) -->
+    <div id="modeNotice" class="hidden">
+        <div class="container mx-auto px-4 py-2">
+            <p id="modeNoticeText" class="text-sm font-semibold"></p>
+        </div>
+    </div>
+
     <!-- ===================== REDIRECTION BANNER ===================== -->
     <!-- Dynamically populated by JS. Shows a massive flashing warning ONLY when a venue is in the red band -->
     <div id="redirectionBanner" class="hidden container mx-auto px-4 pt-6">
@@ -95,6 +102,22 @@
                 Suggested redirection: <span id="bannerSuggestion">[Lowest % Venue]</span>
             </div>
             <div id="bannerReason" class="mt-3 text-red-100 text-sm"></div>
+
+            <!-- Real redirection: move N attendees out of the crowded zone -->
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-red-700/70 p-3">
+                <label for="redirectAmount" class="text-sm font-bold">Move</label>
+                <input id="redirectAmount" type="number" min="1" step="1" value="20"
+                       class="w-24 rounded-lg border border-red-200 bg-white px-3 py-1.5 font-mono text-gray-900 outline-none">
+                <label for="redirectTarget" class="text-sm font-bold">attendees to</label>
+                <select id="redirectTarget"
+                        class="max-w-full rounded-lg border border-red-200 bg-white px-3 py-1.5 font-semibold text-gray-900 outline-none"></select>
+                <button id="redirectBtn" type="button"
+                        class="rounded-lg bg-white px-4 py-1.5 text-sm font-bold text-red-700 shadow transition hover:bg-red-50 disabled:opacity-60">
+                    <i class="fas fa-people-arrows mr-1"></i>Redirect now
+                </button>
+            </div>
+            <div id="redirectHint" class="mt-2 text-red-50 text-sm"></div>
+
             <div class="mt-2 text-red-50 text-sm">
                 <i class="fas fa-arrow-right mr-2"></i>Please redirect attendees to a safer zone immediately.
             </div>
@@ -181,6 +204,17 @@
                     <code>PATCH /venues/{id}/occupancy</code>. Otherwise they stay local to this page.
                 </p>
             </div>
+        </div>
+
+        <!-- ===================== REDIRECT HISTORY ===================== -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8 border border-gray-200">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-lg font-bold text-gray-800">
+                    <i class="fas fa-people-arrows mr-2 text-blue-500"></i>Redirect history
+                </h2>
+                <span id="redirectLogCount" class="text-xs text-gray-500"></span>
+            </div>
+            <ul id="redirectLogList" class="text-sm text-gray-700"></ul>
         </div>
 
         <!-- ===================== KEY INSIGHT / STATUS FOOTER ===================== -->
@@ -282,7 +316,8 @@
             { name: "EXHIBITION", current: 90,  max: 150 }
         ],
         live: false,          // true once GET /venues succeeded
-        suggestionSeq: 0      // guards against stale async suggestion responses
+        suggestionSeq: 0,     // guards against stale async suggestion responses
+        bannerZoneId: null    // venue currently shown in the redirection banner
     };
 
     /* =================================================================
@@ -324,6 +359,75 @@
         el.querySelector("button").addEventListener("click", () => el.remove());
         document.getElementById("toastStack").appendChild(el);
         setTimeout(() => el.remove(), 5000);
+    }
+
+    /* =================================================================
+       2b. WRITE PERMISSIONS + REDIRECT LOG
+       ================================================================= */
+
+    /** Every write (venue edits, redirections) needs a live backend + admin token. */
+    function isWritable() { return state.live && auth.isAdmin; }
+
+    /** Returns true — and explains why — when a write must be blocked. */
+    function blockWrite(action) {
+        if (isWritable()) return false;
+        toast(state.live
+            ? `${action} is admin-only. Sign in with admin / admin123.`
+            : `${action} needs the backend. Start the API and reload.`, "error");
+        return true;
+    }
+
+    function handleWriteError(err, prefix) {
+        if (err.status === 401) {
+            auth.clear();
+            toast(`${prefix}: session expired — sign in again as admin.`, "error");
+            renderConnection();
+        } else if (err.status === 403) {
+            toast(`${prefix}: admin privileges required.`, "error");
+        } else {
+            toast(`${prefix}: ${err.message}`, "error");
+        }
+    }
+
+    const REDIRECT_LOG_KEY = "omniview_redirect_log";
+
+    function loadRedirectLog() {
+        try {
+            const log = JSON.parse(localStorage.getItem(REDIRECT_LOG_KEY));
+            return Array.isArray(log) ? log : [];
+        } catch (_) { return []; }
+    }
+
+    function logRedirect(entry) {
+        const log = loadRedirectLog();
+        log.unshift(Object.assign({ at: new Date().toISOString() }, entry));
+        try { localStorage.setItem(REDIRECT_LOG_KEY, JSON.stringify(log.slice(0, 10))); } catch (_) {}
+        renderRedirectLog();
+    }
+
+    function renderRedirectLog() {
+        const list = document.getElementById("redirectLogList");
+        const entries = loadRedirectLog();
+        document.getElementById("redirectLogCount").textContent =
+            `${entries.length} movement(s) recorded in this browser`;
+
+        if (entries.length === 0) {
+            list.innerHTML = `<li class="text-gray-500">
+                No redirections yet. When a zone turns red, use the banner above to move attendees.</li>`;
+            return;
+        }
+
+        list.innerHTML = entries.map(e => `
+            <li class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 py-2 last:border-0">
+                <span><i class="fas fa-people-arrows mr-2 text-blue-500"></i>
+                    Moved <strong>${e.amount}</strong> attendee(s) from <strong>${esc(e.from)}</strong>
+                    → <strong>${esc(e.to)}</strong>
+                    <span class="ml-2 text-xs text-gray-500">
+                        ${esc(e.from)} ${e.fromBefore} → ${e.fromAfter} · ${esc(e.to)} ${e.toBefore} → ${e.toAfter}
+                    </span>
+                </span>
+                <span class="font-mono text-xs text-gray-500">${new Date(e.at).toLocaleString()}</span>
+            </li>`).join("");
     }
 
     /* =================================================================
@@ -489,6 +593,18 @@
         }
 
         grid.innerHTML = html;
+
+        // Writes are admin-only: lock every control for read-only visitors.
+        if (!isWritable()) {
+            grid.querySelectorAll("input, button").forEach(el => {
+                el.disabled = true;
+                el.classList.add("opacity-50", "cursor-not-allowed");
+                el.title = state.live
+                    ? "Sign in as admin to edit venues."
+                    : "Backend offline — editing disabled.";
+            });
+        }
+
         updateFooter();
         evaluateRedirection();
     }
@@ -524,65 +640,49 @@
        5. STATE UPDATE HANDLERS (wired through data-action listeners)
        ================================================================= */
 
-    /** Updates the current occupancy for a zone, locally and (admin) on the server. */
+    /** Updates the current occupancy for a zone (admin only, admin-only write). */
     async function updateCurrent(index) {
         const input = document.getElementById(`currentInput_${index}`);
         const zone  = state.venues[index];
         if (!zone || !input) return;
+        if (blockWrite("Updating occupancy")) { render(); return; }
 
         const raw = parseInt(input.value, 10);
         if (Number.isNaN(raw)) { toast("Enter a whole number for occupancy.", "error"); return; }
         const clamped = Math.max(0, raw);
 
-        if (state.live && zone.id != null && auth.isAdmin) {
-            try {
-                const updated = await apiFetch(`/venues/${zone.id}/occupancy`, {
-                    method: "PATCH", auth: true, body: { occupancy: clamped }
-                });
-                Object.assign(zone, fromApiVenue(updated));
-                toast(`${zone.name} updated on the backend (${updated.occupancy_percentage}%, ${updated.status}).`, "success");
-            } catch (err) {
-                if (err.status === 401 || err.status === 403) {
-                    toast("Admin token missing/expired — updated locally only.", "warn");
-                    zone.current = clamped;
-                } else {
-                    toast(`Backend rejected the update: ${err.message}`, "error");
-                    zone.current = clamped;
-                }
-            }
-        } else {
-            zone.current = clamped;
-            toast(`${zone.name} updated locally.${state.live ? " Log in as admin to persist to the backend." : ""}`,
-                  state.live ? "warn" : "info");
+        try {
+            const updated = await apiFetch(`/venues/${zone.id}/occupancy`, {
+                method: "PATCH", auth: true, body: { occupancy: clamped }
+            });
+            Object.assign(zone, fromApiVenue(updated));
+            toast(`${zone.name} is now ${updated.occupancy} / ${updated.capacity} `
+                + `(${updated.occupancy_percentage}%, ${updated.status}) on the backend.`, "success");
+        } catch (err) {
+            handleWriteError(err, `${zone.name} was not updated`);
         }
         render();
     }
 
-    /** Updates the max capacity for a zone (min 1). */
+    /** Updates the max capacity for a zone (min 1, admin only). */
     async function updateCapacity(index) {
         const input = document.getElementById(`capacityInput_${index}`);
         const zone  = state.venues[index];
         if (!zone || !input) return;
+        if (blockWrite("Changing capacity")) { render(); return; }
 
         const raw = parseInt(input.value, 10);
         if (Number.isNaN(raw)) { toast("Enter a whole number for capacity.", "error"); return; }
         const clamped = Math.max(1, raw);
 
-        if (state.live && zone.id != null && auth.isAdmin) {
-            try {
-                const updated = await apiFetch(`/venues/${zone.id}`, {
-                    method: "PATCH", auth: true, body: { capacity: clamped }
-                });
-                Object.assign(zone, fromApiVenue(updated));
-                toast(`${zone.name} capacity set to ${updated.capacity} on the backend.`, "success");
-            } catch (err) {
-                toast(`Backend rejected the capacity change: ${err.message}`, "error");
-                zone.max = clamped;
-            }
-        } else {
-            zone.max = clamped;
-            toast(`${zone.name} capacity updated locally.${state.live ? " Log in as admin to persist to the backend." : ""}`,
-                  state.live ? "warn" : "info");
+        try {
+            const updated = await apiFetch(`/venues/${zone.id}`, {
+                method: "PATCH", auth: true, body: { capacity: clamped }
+            });
+            Object.assign(zone, fromApiVenue(updated));
+            toast(`${zone.name} capacity set to ${updated.capacity} on the backend.`, "success");
+        } catch (err) {
+            handleWriteError(err, `${zone.name} capacity was not changed`);
         }
         render();
     }
@@ -595,28 +695,20 @@
         return `Zone ${n}`;
     }
 
-    /** Adds a venue: POST /venues as admin, otherwise append locally. */
+    /** Adds a venue with POST /venues (admin only). */
     async function addVenue() {
-        const name = nextZoneName();
+        if (blockWrite("Adding a venue")) return;
 
-        if (state.live && auth.isAdmin) {
-            try {
-                const created = await apiFetch("/venues", {
-                    method: "POST", auth: true,
-                    body: { name, capacity: 100, occupancy: 0 }
-                });
-                state.venues.push(fromApiVenue(created));
-                toast(`Created "${created.name}" on the backend.`, "success");
-                render();
-                return;
-            } catch (err) {
-                toast(`Could not create venue: ${err.message}`, "error");
-            }
+        try {
+            const created = await apiFetch("/venues", {
+                method: "POST", auth: true,
+                body: { name: nextZoneName(), capacity: 100, occupancy: 0 }
+            });
+            state.venues.push(fromApiVenue(created));
+            toast(`Created "${created.name}" on the backend.`, "success");
+        } catch (err) {
+            handleWriteError(err, "Could not create the venue");
         }
-
-        state.venues.push({ name, current: 0, max: 100 });
-        toast(`Added "${name}" locally.${state.live ? " Log in as admin to persist it." : ""}`,
-              state.live ? "warn" : "info");
         render();
     }
 
@@ -624,6 +716,8 @@
     async function deleteVenue(index, btn) {
         const zone = state.venues[index];
         if (!zone) return;
+
+        if (blockWrite("Deleting a venue")) return;
 
         if (btn && btn.dataset.armed !== "1") {
             btn.dataset.armed = "1";
@@ -640,17 +734,13 @@
             return;
         }
 
-        if (state.live && zone.id != null && auth.isAdmin) {
-            try {
-                await apiFetch(`/venues/${zone.id}`, { method: "DELETE", auth: true });
-                toast(`Deleted "${zone.name}" from the backend.`, "success");
-            } catch (err) {
-                toast(`Could not delete "${zone.name}": ${err.message}`, "error");
-                render();
-                return;
-            }
-        } else {
-            toast(`Removed "${zone.name}" locally.`, "info");
+        try {
+            await apiFetch(`/venues/${zone.id}`, { method: "DELETE", auth: true });
+            toast(`Deleted "${zone.name}" from the backend.`, "success");
+        } catch (err) {
+            handleWriteError(err, `Could not delete "${zone.name}"`);
+            render();
+            return;
         }
         state.venues.splice(index, 1);
         render();
@@ -689,30 +779,56 @@
           crashing (that was the old single-venue bug).
        ================================================================= */
     function evaluateRedirection() {
-        const redZones = state.venues.filter(z => statusBand(z, getPercentage(z)) === "critical");
+        // Show the WORST zone first, not just the first one in API order.
+        const redZones = state.venues
+            .filter(z => statusBand(z, getPercentage(z)) === "critical")
+            .sort((a, b) => getPercentage(b) - getPercentage(a));
+
+        const amountInput = document.getElementById("redirectAmount");
+        const targetSelect = document.getElementById("redirectTarget");
+        const redirectBtn = document.getElementById("redirectBtn");
+        const hint = document.getElementById("redirectHint");
 
         if (redZones.length === 0) {
             banner.classList.add("hidden");
+            state.bannerZoneId = null;
             return;
         }
 
         const red = redZones[0];
+        state.bannerZoneId = red.id != null ? red.id : null;
         bannerTitle.textContent = `${red.name} is near capacity (${getPercentage(red)}%).`;
         banner.classList.remove("hidden");
 
+        // Everyone who can receive attendees, emptiest first.
         const candidates = state.venues
             .filter(z => z !== red && statusBand(z, getPercentage(z)) !== "critical")
             .sort((a, b) => getPercentage(a) - getPercentage(b));
 
+        const previousPick = targetSelect.value;
+        targetSelect.innerHTML = candidates.length
+            ? candidates.map(z => `<option value="${z.id}">${esc(z.name)} — ${getPercentage(z)}% full, `
+                + `${Math.max(z.max - z.current, 0)} free</option>`).join("")
+            : `<option value="">No safe zone available</option>`;
+
+        if (candidates.some(z => String(z.id) === previousPick)) targetSelect.value = previousPick;
+
         if (candidates.length === 0) {
             bannerSug.textContent = "all other zones are also critical — relocate manually.";
             bannerReason.textContent = "";
-            return;
+        } else {
+            const lowest = candidates[0];
+            bannerSug.textContent = `${lowest.name} (${getPercentage(lowest)}% full, ${Math.max(lowest.max - lowest.current, 0)} free)`;
+            bannerReason.textContent = "";
         }
 
-        const lowest = candidates[0];
-        bannerSug.textContent = `${lowest.name} (${getPercentage(lowest)}% full, ${Math.max(lowest.max - lowest.current, 0)} free)`;
-        bannerReason.textContent = "";
+        const writable = isWritable();
+        amountInput.disabled = !writable;
+        targetSelect.disabled = !writable || candidates.length === 0;
+        redirectBtn.disabled = !writable || candidates.length === 0;
+        hint.textContent = writable
+            ? "Redirecting moves people for real: the crowded venue loses them and the chosen zone gains them."
+            : "Admin login required to move attendees between venues.";
 
         // When the data is live, let the backend's redirection algorithm confirm
         // (and explain) the choice: GET /venues/{id}/suggestion.
@@ -725,12 +841,83 @@
                         const s = result.suggestion;
                         bannerSug.textContent = `${s.venue_name} (${s.occupancy_percentage}% full, ${s.available_capacity} free)`;
                         bannerReason.textContent = `Backend: ${s.reason}`;
+                        const match = candidates.find(z => z.id === s.venue_id);
+                        if (match) targetSelect.value = String(match.id);
                     } else if (result.reason) {
                         bannerReason.textContent = `Backend: ${result.reason}`;
                     }
                 })
                 .catch(() => { /* banner already shows the local suggestion */ });
         }
+    }
+
+    /**
+     * The actual redirection: move `amount` attendees out of the crowded venue
+     * and into the chosen one, in two API writes. If the second write fails the
+     * first is rolled back so the two counts can never drift apart.
+     */
+    async function performRedirect() {
+        if (blockWrite("Redirecting attendees")) return;
+
+        const source = state.venues.find(z => z.id === state.bannerZoneId);
+        const targetId = Number(document.getElementById("redirectTarget").value);
+        const target = state.venues.find(z => z.id === targetId);
+        const amount = parseInt(document.getElementById("redirectAmount").value, 10);
+
+        if (!source) { toast("No crowded venue is selected.", "error"); return; }
+        if (!target) { toast("Pick a destination zone for the attendees.", "error"); return; }
+        if (!Number.isFinite(amount) || amount < 1) {
+            toast("Enter how many attendees to move (1 or more).", "error");
+            return;
+        }
+        if (amount > source.current) {
+            toast(`${source.name} only holds ${source.current} attendees.`, "error");
+            return;
+        }
+
+        const btn = document.getElementById("redirectBtn");
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Moving…';
+
+        const before = { from: source.current, to: target.current };
+
+        try {
+            const movedFrom = await apiFetch(`/venues/${source.id}/occupancy`, {
+                method: "PATCH", auth: true, body: { occupancy: source.current - amount }
+            });
+
+            let movedTo;
+            try {
+                movedTo = await apiFetch(`/venues/${target.id}/occupancy`, {
+                    method: "PATCH", auth: true, body: { occupancy: target.current + amount }
+                });
+            } catch (err) {
+                // Put the source back so no attendees are lost.
+                await apiFetch(`/venues/${source.id}/occupancy`, {
+                    method: "PATCH", auth: true, body: { occupancy: before.from }
+                }).catch(() => {});
+                throw err;
+            }
+
+            Object.assign(source, fromApiVenue(movedFrom));
+            Object.assign(target, fromApiVenue(movedTo));
+
+            logRedirect({
+                amount, from: source.name, to: target.name,
+                fromBefore: before.from, fromAfter: source.current,
+                toBefore: before.to, toAfter: target.current
+            });
+
+            toast(`Moved ${amount} attendee(s): ${source.name} ${before.from} → ${source.current}, `
+                + `${target.name} ${before.to} → ${target.current}.`, "success");
+        } catch (err) {
+            handleWriteError(err, "Redirection failed");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+        render();
     }
 
     /* =================================================================
@@ -815,6 +1002,24 @@
         }
         loginBtn.classList.toggle("hidden", Boolean(auth.token));
         logoutBtn.classList.toggle("hidden", !auth.token);
+
+        // Read-only vs admin mode notice
+        const notice = document.getElementById("modeNotice");
+        const noticeText = document.getElementById("modeNoticeText");
+        const inner = notice.querySelector("div");
+        if (!state.live) {
+            inner.className = "container mx-auto px-4 py-2 bg-amber-100 text-amber-900 border-b border-amber-300";
+            noticeText.innerHTML = '<i class="fas fa-plug mr-2"></i>Backend offline — read-only demo data. Start the API to enable editing.';
+            notice.classList.remove("hidden");
+        } else if (!auth.isAdmin) {
+            inner.className = "container mx-auto px-4 py-2 bg-amber-100 text-amber-900 border-b border-amber-300";
+            noticeText.innerHTML = '<i class="fas fa-lock mr-2"></i>Read-only mode — sign in as <strong>admin / admin123</strong> to edit venues or redirect crowds.';
+            notice.classList.remove("hidden");
+        } else {
+            inner.className = "container mx-auto px-4 py-2 bg-emerald-100 text-emerald-900 border-b border-emerald-300";
+            noticeText.innerHTML = '<i class="fas fa-unlock mr-2"></i>Admin mode — venue edits and crowd redirections are saved to the backend.';
+            notice.classList.remove("hidden");
+        }
     }
 
     async function resolveApiBase() {
@@ -863,7 +1068,7 @@
 
     function handleLogout() {
         auth.clear();
-        toast("Signed out. Writes will stay local to this page.", "info");
+        toast("Signed out. The dashboard is read-only until you sign in as admin again.", "info");
         renderConnection();
         render();
     }
@@ -888,6 +1093,7 @@
     document.getElementById("clearVenuesBtn").addEventListener("click", (e) => clearAllVenues(e.currentTarget));
     document.getElementById("refreshBtn").addEventListener("click", () => loadVenues());
     document.getElementById("loginForm").addEventListener("submit", handleLogin);
+    document.getElementById("redirectBtn").addEventListener("click", performRedirect);
     logoutBtn.addEventListener("click", handleLogout);
     document.getElementById("editEventBtn").addEventListener("click", openEventEditor);
     document.getElementById("newEventBtn").addEventListener("click", createEvent);
@@ -897,6 +1103,7 @@
     (async function boot() {
         render();                       // paint demo/local state immediately
         renderConnection();
+        renderRedirectLog();
         updateClock();
         setInterval(updateClock, 1000);
 
