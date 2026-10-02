@@ -157,9 +157,12 @@ function createZoneCard(zone) {
   `;
 }
 
-function renderZones(zones, container) {
-  if (!Array.isArray(zones) || zones.length === 0) {
-    container.innerHTML = `
+function renderZones(container) {
+  const grid = container || document.getElementById("zone-monitor__grid");
+  if (!grid) return;
+
+  if (!Array.isArray(state.zones) || state.zones.length === 0) {
+    grid.innerHTML = `
       <div class="zone-monitor-module__empty">
         <span class="zone-monitor-module__empty-icon">▌</span>
         <p class="zone-monitor-module__empty-text">No zones monitored yet.</p>
@@ -168,48 +171,284 @@ function renderZones(zones, container) {
     return;
   }
 
-  container.innerHTML = zones.map(createZoneCard).join("");
+  grid.innerHTML = state.zones.map(createZoneCard).join("");
 }
 
-function updateZone(zoneId, patch, container) {
+function updateZone(zoneId, patch) {
   const zone = (state.zones.find((z) => z.id === zoneId) || null);
   if (!zone) return;
 
   Object.assign(zone, patch);
 
   // Re-render only the affected card so status and progress stay consistent.
-  const card = $(`.zone-monitor-module__card[data-zone-id="${zoneId}"]`, container);
+  const grid = document.getElementById("zone-monitor__grid");
+  const card = $(`.zone-monitor-module__card[data-zone-id="${zoneId}"]`, grid);
   if (card) {
     card.outerHTML = createZoneCard(zone);
   } else {
-    renderZones(state.zones, container);
+    renderZones();
   }
 }
 
-function refreshAll(container) {
-  renderZones(state.zones, container);
+function simulateZoneIncrease(amount) {
+  const zone = state.zones.find((z) => z.id === state.simulation.activeZoneId);
+  if (!zone) return;
+
+  zone.currentCount = Math.min(zone.capacity, zone.currentCount + amount);
+  state.simulation.step += Math.abs(amount);
+
+  // Keep staff pool consistent: deploy staff when a zone becomes critical.
+  const occupancy = calculateOccupancyPercentage(zone);
+  if (occupancy >= 90) {
+    const idle = state.staff.available - state.staff.deployed;
+    const toDeploy = Math.min(2, idle, state.staff.total - state.staff.deployed);
+    if (toDeploy > 0) {
+      state.staff.deployed += toDeploy;
+      state.staff.available -= toDeploy;
+      state.staff.busy += toDeploy;
+    }
+  }
+
+  refreshAll();
 }
 
-// ----------------------------------------------------------------
-// Public initialization
-// ----------------------------------------------------------------
+function simulateZoneDecrease(amount) {
+  const zone = state.zones.find((z) => z.id === state.simulation.activeZoneId);
+  if (!zone) return;
+
+  zone.currentCount = Math.max(0, zone.currentCount - amount);
+  state.simulation.step += Math.abs(amount);
+  refreshAll();
+}
+
+function selectSimulationZone(zoneId) {
+  state.simulation.activeZoneId = zoneId;
+  refreshAll();
+}
+
+function initiateCrowdSurge() {
+  const zone = state.zones.find((z) => z.id === state.simulation.activeZoneId);
+  if (!zone) return;
+
+  const surgeAmount = 100;
+  // Wrap the same +100 event into the simulation pipeline.
+  simulateZoneIncrease(surgeAmount);
+}
+
+function deployStaff(zoneId) {
+  const zone = state.zones.find((z) => z.id === zoneId);
+  if (!zone) return;
+
+  const available = state.staff.available - state.staff.deployed;
+  if (available < 1) {
+    showToast("No available staff to deploy.", "error");
+    return;
+  }
+
+  const toDeploy = Math.min(2, available);
+  state.staff.deployed += toDeploy;
+  state.staff.available -= toDeploy;
+  state.staff.busy += toDeploy;
+
+  // Re-generate alerts and recommendations so the UI stays in sync.
+  state.alerts = generateAlerts(state.zones);
+  state.recommendations = generateRecommendations(state.zones, zone);
+
+  showToast(`${toDeploy} staff member(s) deployed to ${zone.name}.`);
+  renderAlerts(document.getElementById("alert-list"));
+  renderRecommendations(document.getElementById("recommendation-list"));
+}
+
+function refreshAll() {
+  const grid = document.getElementById("zone-monitor__grid");
+  if (grid) {
+    renderZones(state.zones, grid);
+  }
+
+  state.alerts = generateAlerts(state.zones);
+  renderAlerts(document.getElementById("alert-list"));
+  renderRecommendations(document.getElementById("recommendation-list"));
+  renderStaffDeployment();
+}
+
+function renderStaffDeployment() {
+  const staffPanel = document.getElementById("staff-panel");
+  const staffGrid = document.getElementById("staff-grid");
+  const simulationActive = document.getElementById("simulation-active");
+  const select = document.getElementById("simulation-zone-select");
+  const surgeBtn = document.getElementById("simulation-surge");
+
+  if (!staffPanel || !staffGrid || !simulationActive) return;
+
+  const staff = state.staff;
+  const activeZoneId = state.simulation.activeZoneId;
+  const activeZone = state.zones.find((z) => z.id === activeZoneId) || state.zones[0];
+  const activeOccupancy = calculateOccupancyPercentage(activeZone);
+  const activeStatus = getZoneStatus(activeOccupancy);
+
+  const available = staff.available - staff.deployed;
+  const busy = staff.busy;
+  const deployed = staff.deployed;
+
+  // Update summary counts (static elements)
+  document.getElementById("staff-summary-total").textContent = staff.total;
+  document.getElementById("staff-summary-available").textContent = available;
+  document.getElementById("staff-summary-deployed").textContent = deployed;
+  document.getElementById("staff-summary-busy").textContent = busy;
+  document.getElementById("staff-total").textContent = staff.total;
+
+  // Build staff zone cards into the grid
+  staffGrid.innerHTML = state.zones
+    .map((zone) => {
+      const occ = calculateOccupancyPercentage(zone);
+      const status = getZoneStatus(occ);
+      const isCritical = status === "CRITICAL";
+      const isWarning = status === "WARNING";
+
+      const candidates = state.zones
+        .map((z) => ({ z, occ: calculateOccupancyPercentage(z), status: getZoneStatus(occ) }))
+        .filter((x) => x.status !== "CRITICAL" && x.status !== "WARNING")
+        .slice(0, 3)
+        .map((x) => x.z.name);
+
+      const criticalNames = state.zones
+        .map((z) => ({ z, occ: calculateOccupancyPercentage(z), status: getZoneStatus(occ) }))
+        .filter((x) => x.status === "CRITICAL")
+        .map((x) => x.z.name);
+
+      const canDeploy = available > 0 && (status === "CRITICAL" || status === "WARNING");
+
+      return `
+        <div class="zone-monitor-module__staff-zone ${isCritical ? "zone-monitor-module__staff-zone--critical" : isWarning ? "zone-monitor-module__staff-zone--warning" : ""}" data-zone-id="${zone.id}">
+          <div class="zone-monitor-module__staff-zone-header">
+            <span class="zone-monitor-module__staff-zone-name">${zone.name}</span>
+            <span class="zone-monitor-module__staff-zone-status ${isCritical ? "zone-monitor-module__staff-zone-status--critical" : isWarning ? "zone-monitor-module__staff-zone-status--warning" : "zone-monitor-module__staff-zone-status--safe"}">
+              ${status}
+            </span>
+          </div>
+
+          <div class="zone-monitor-module__staff-zone-meta">
+            <span>Occupancy <strong>${occ}%</strong></span>
+            <span>${zone.currentCount} / ${zone.capacity} people</span>
+            <span>${calculateOccupancyPercentage(zone)}% occupied</span>
+          </div>
+
+          <div class="zone-monitor-module__staff-zone-body">
+            <p class="zone-monitor-module__staff-recommendation">
+              ${isCritical ? `<strong>Recommended:</strong> Deploy 2 staff members.` : isWarning ? `<strong>Recommended:</strong> Monitor and consider deploying staff.` : "No deployment needed."}
+            </p>
+
+            <div class="zone-monitor-module__staff-candidates">
+              ${isCritical ? `<span class="zone-monitor-module__staff-candidate zone-monitor-module__staff-candidate--available">Available nearby:</span>` : ""}
+              <div class="zone-monitor-module__staff-candidates-list">
+                ${candidates.length > 0 ? candidates.map((name) => `<span class="zone-monitor-module__staff-candidate-item">${name}</span>`).join("") : "<span class=\"zone-monitor-module__staff-candidate-item\">No nearby safe zones available.</span>"}
+              </div>
+            </div>
+
+            <div class="zone-monitor-module__staff-candidates">
+              ${isCritical ? `<span class="zone-monitor-module__staff-candidate zone-monitor-module__staff-candidate--available">Recruiting:</span>` : ""}
+              <div class="zone-monitor-module__staff-candidates-list">
+                ${criticalNames.map((name) => `<span class="zone-monitor-module__staff-candidate-item">${name}</span>`).join("")}
+              </div>
+            </div>
+
+            <div class="zone-monitor-module__staff-actions">
+              <button type="button" class="zone-monitor-module__deploy-button" data-deploy="${zone.id}" ${!canDeploy ? "disabled" : ""}>
+                Deploy Staff
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  // Attach deploy handlers
+  staffPanel.querySelectorAll("button[data-deploy]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      deployStaff(Number(btn.dataset.deploy));
+    });
+  });
+
+  // Update simulation active state
+  simulationActive.className = `zone-monitor-module__simulation-active ${activeStatus === "CRITICAL" ? "zone-monitor-module__simulation-active--critical" : activeStatus === "WARNING" ? "zone-monitor-module__simulation-active--warning" : "zone-monitor-module__simulation-active--safe"}`;
+  document.getElementById("simulation-active-name").textContent = activeZone.name;
+  document.getElementById("simulation-active-status").textContent = activeStatus;
+  document.getElementById("simulation-active-status").className = `zone-monitor-module__simulation-active-status ${activeStatus.toLowerCase()}`;
+  document.getElementById("simulation-active-occupancy").textContent = `${activeZone.currentCount} / ${activeZone.capacity}`;
+  document.getElementById("simulation-active-percentage").textContent = `${calculateOccupancyPercentage(activeZone)}%`;
+  document.getElementById("simulation-active-growth").textContent = `${activeZone.growthRate} people/min`;
+
+  // Update zone select options
+  if (select) {
+    select.innerHTML = state.zones
+      .map((z) => `<option value="${z.id}" ${z.id === activeZoneId ? "selected" : ""}>${z.name}</option>`)
+      .join("");
+  }
+
+  // Attach simulation control handlers
+  staffPanel.querySelectorAll("button[data-simulation-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.simulationAction;
+      const step = Number(btn.dataset.step);
+      const zoneId = state.simulation.activeZoneId;
+      const zone = state.zones.find((z) => z.id === zoneId);
+
+      if (!zone) return;
+
+      if (action === "increase") {
+        simulateZoneIncrease(step);
+      } else {
+        simulateZoneDecrease(step);
+      }
+    });
+  });
+
+  if (surgeBtn) {
+    surgeBtn.addEventListener("click", () => {
+      initiateCrowdSurge();
+    });
+  }
+}
+
+function showToast(message, type = "success") {
+  let existing = document.querySelector(".zone-monitor-module__toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = `zone-monitor-module__toast zone-monitor-module__toast--${type}`;
+  toast.innerHTML = `
+    <span class="zone-monitor-module__toast__icon">${type === "success" ? "✅" : "⚠️"}</span>
+    <span class="zone-monitor-module__toast__message">${message}</span>
+    <button type="button" class="zone-monitor-module__toast__dismiss" aria-label="Dismiss">×</button>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(12px)";
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 400);
+  }, 4000);
+}
+
 function initMonitoring(moduleEl, options = {}) {
-  const container =
-    options.container ||
-    (moduleEl && moduleEl.querySelector
-      ? moduleEl.querySelector(".zone-monitor-module__grid")
-      : null);
-
-  if (!container) throw new Error("Zone monitoring container not found.");
-
-  renderZones(state.zones, container);
+  // The module is self-contained; no container injection needed.
+  // All DOM elements live inside the module's static template.
+  renderZones();
+  renderStaffDeployment();
+  renderAlerts();
+  renderRecommendations();
 
   // Optional live refresh (no hardcoded timers here — consumed by the
   // dashboard or a parent system).
   let timer = null;
   const startAutoRefresh = (intervalMs) => {
     if (timer) clearInterval(timer);
-    timer = setInterval(() => refreshAll(container), intervalMs || 30000);
+    timer = setInterval(() => refreshAll(), intervalMs || 30000);
   };
 
   moduleEl.addEventListener("zone:monitor:start", (e) => {
@@ -225,9 +464,10 @@ function initMonitoring(moduleEl, options = {}) {
 
   return {
     state,
-    container,
     renderZones,
-    updateZone,
+    renderStaffDeployment,
+    renderAlerts,
+    renderRecommendations,
     refreshAll,
     startAutoRefresh,
     stopAutoRefresh: () =>
@@ -336,9 +576,12 @@ function getUnacknowledgedAlerts() {
 }
 
 function renderAlerts(container) {
+  const alertsList = container || document.getElementById("alert-list");
+  if (!alertsList) return;
+
   const alerts = getUnacknowledgedAlerts();
   if (alerts.length === 0) {
-    container.innerHTML = `
+    alertsList.innerHTML = `
       <div class="zone-monitor-module__alerts-empty zone-monitor-module__alerts-empty--no-alerts">
         <span class="zone-monitor-module__alerts-empty-icon">✅</span>
         <p class="zone-monitor-module__alerts-empty-text">All clear. No overcrowding alerts.</p>
@@ -347,7 +590,7 @@ function renderAlerts(container) {
     return;
   }
 
-  container.innerHTML = alerts.map((alert) => `
+  alertsList.innerHTML = alerts.map((alert) => `
     <div class="zone-monitor-module__alert zone-monitor-module__alert--${alert.severity.toLowerCase()}" data-alert-id="${alert.id}">
       <div class="zone-monitor-module__alert-header">
         <div class="zone-monitor-module__alert-header-top">
@@ -380,28 +623,31 @@ function renderAlerts(container) {
   `).join("");
 
   // Attach acknowledge handlers.
-  container.querySelectorAll("button[data-ack]").forEach((btn) => {
+  alertsList.querySelectorAll("button[data-ack]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const alertId = btn.dataset.ack;
       const ok = acknowledgeAlert(alertId);
       if (ok) {
-        renderAlerts(container);
-        renderRecommendations(container);
+        renderAlerts();
+        renderRecommendations();
       }
     });
   });
 }
 
 function renderRecommendations(container) {
-  const activeCard = container.closest ? container.closest(".zone-monitor-module__card") : null;
+  const recommendationsList = container || document.getElementById("recommendation-list");
+  if (!recommendationsList) return;
+
   let activeZone = null;
 
+  // Determine the active zone: first click a card, then the most crowded alert.
+  const activeCard = document.querySelector(".zone-monitor-module__card[data-zone-id].active");
   if (activeCard) {
     const zoneId = Number(activeCard.dataset.zoneId);
     activeZone = state.zones.find((z) => z.id === zoneId) || null;
   }
 
-  // Pick the most crowded unacknowledged alert as the active zone.
   if (!activeZone) {
     const critical = state.alerts.find((a) => a.severity === "CRITICAL");
     const warning = state.alerts.find((a) => a.severity === "WARNING");
@@ -410,7 +656,7 @@ function renderRecommendations(container) {
   }
 
   if (!activeZone) {
-    container.innerHTML = `
+    recommendationsList.innerHTML = `
       <div class="zone-monitor-module__recommendations-empty">
         <span class="zone-monitor-module__recommendations-empty-icon">📋</span>
         <p class="zone-monitor-module__recommendations-empty-text">Select a crowded zone to get redirection recommendations.</p>
@@ -419,11 +665,10 @@ function renderRecommendations(container) {
     return;
   }
 
-  const occupied = calculateOccupancyPercentage(activeZone);
   const recommendations = generateRecommendations(state.zones, activeZone);
 
   if (recommendations.length === 0) {
-    container.innerHTML = `
+    recommendationsList.innerHTML = `
       <div class="zone-monitor-module__no-safe-zones">
         <span class="zone-monitor-module__recommendations-empty-icon">🚫</span>
         <p class="zone-monitor-module__no-safe-zones-text">No safe zones available right now.</p>
@@ -432,7 +677,7 @@ function renderRecommendations(container) {
     return;
   }
 
-  container.innerHTML = `
+  recommendationsList.innerHTML = `
     <div class="zone-monitor-module__recommendations-header">
       <h2 class="zone-monitor-module__recommendations-title">Recommended alternatives for ${activeZone.name}</h2>
       <span class="zone-monitor-module__recommendations-count">${recommendations.length} options</span>
@@ -461,7 +706,7 @@ function renderRecommendations(container) {
     </div>
   `;
 
-  container.querySelectorAll("button[data-redirect-to]").forEach((btn) => {
+  recommendationsList.querySelectorAll("button[data-redirect-to]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const targetId = Number(btn.dataset.redirectTo);
       const target = state.zones.find((z) => z.id === targetId);
@@ -471,7 +716,7 @@ function renderRecommendations(container) {
       const message = `Redirect recommendation activated for ${activeZone.name} → ${target.name} at ${activatedAt.toLocaleString()}.`;
 
       // Show a clear confirmation state inside the recommendations panel.
-      container.innerHTML = `
+      recommendationsList.innerHTML = `
         <div class="zone-monitor-module__activation">
           <span class="zone-monitor-module__activation-icon">✅</span>
           <span class="zone-monitor-module__activation-text">Redirect recommendation activated.</span>
@@ -482,8 +727,8 @@ function renderRecommendations(container) {
         </div>
       `;
 
-      container.querySelector(".zone-monitor-module__activation-dismiss").addEventListener("click", () => {
-        renderRecommendations(container);
+      recommendationsList.querySelector(".zone-monitor-module__activation-dismiss").addEventListener("click", () => {
+        renderRecommendations();
       });
     });
   });
@@ -531,13 +776,15 @@ function initMonitoring(moduleEl, options = {}) {
     }
   });
 
-  // Reactive hook: refresh alerts + recommendations when zone state changes.
+  // Reactive hook: refresh alerts + recommendations + staff recommendations.
   const originalUpdateZone = updateZone;
   updateZone = function (zoneId, patch, containerToUse) {
     originalUpdateZone(zoneId, patch, containerToUse);
     state.alerts = generateAlerts(state.zones);
-    renderAlerts(containerToUse || container);
-    renderRecommendations(containerToUse || container);
+    state.recommendations = generateRecommendations(state.zones, state.zones.find((z) => z.id === zoneId) || state.zones[0]);
+    state.staffRecommendations = generateRecommendations(state.zones, state.zones.find((z) => z.id === zoneId) || state.zones[0]);
+    renderAlerts(document.getElementById("alert-list"));
+    renderRecommendations(document.getElementById("recommendation-list"));
   };
 
   return {
@@ -551,6 +798,11 @@ function initMonitoring(moduleEl, options = {}) {
     acknowledgeAlert,
     generateRecommendations,
     renderRecommendations,
+    deployStaff,
+    selectSimulationZone,
+    simulateZoneIncrease,
+    simulateZoneDecrease,
+    initiateCrowdSurge,
     startAutoRefresh,
     stopAutoRefresh: () =>
       moduleEl && moduleEl.dispatchEvent(new CustomEvent("zone:monitor:stop")),
