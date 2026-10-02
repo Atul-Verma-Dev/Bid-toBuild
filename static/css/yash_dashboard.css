@@ -1,0 +1,512 @@
+/* ============================================================
+   CrowdFlow — Event Overview & Crowd Analytics
+   Stage 1 static styles
+   ============================================================ */
+
+#yash-dashboard-root {
+  --bg: #080F1F;
+  --card: #111C30;
+  --card-2: #16233B;
+  --border: #1E3050;
+  --text: #E8EAF0;
+  --muted: #8A90A6;
+  --accent: #3B82F6;
+  --cyan: #22D3EE;
+  --green: #2ECC71;
+  --yellow: #F1C40F;
+  --red: #E74C3C;
+  --radius: 12px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Header ---- */
+.yash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+
+.yash-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.yash-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--cyan));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #080F1F;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+}
+
+.yash-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.yash-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0 0 0;
+}
+
+.yash-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.yash-data-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 20px;
+}
+
+.yash-data-source-icon {
+  font-size: 16px;
+  color: var(--cyan);
+}
+
+.yash-data-source-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yash-data-source-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+
+.yash-data-source-status {
+  font-size: 12px;
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.yash-data-source-status::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 6px;
+  animation: pulse-dot 1.2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* ---- Stats Grid ---- */
+.yash-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  padding: 24px 28px;
+  flex: 1;
+}
+
+.yash-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.yash-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.yash-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.yash-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.yash-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.yash-card-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+
+.yash-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.yash-card-sub {
+  font-size: 13px;
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* ---- Sections ---- */
+.yash-section {
+  padding: 24px 28px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.yash-section + .yash-section {
+  border-top: 1px solid var(--border);
+}
+
+.yash-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.yash-section-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.yash-section-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.yash-section-subtitle a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+.yash-section-subtitle a:hover {
+  text-decoration: underline;
+}
+
+/* ---- Occupancy Grid ---- */
+.yash-occupancy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.yash-occupancy-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  transition: border-color 0.2s;
+}
+
+.yash-occupancy-item:hover {
+  border-color: var(--accent);
+}
+
+.yash-occupancy-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yash-occupancy-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.yash-occupancy-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.yash-occupancy-capacity {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.yash-occupancy-bar {
+  height: 8px;
+  background: var(--card-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.yash-progress {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.yash-level-ok {
+  background: var(--green);
+}
+
+.yash-level-warning {
+  background: var(--yellow);
+}
+
+.yash-level-critical {
+  background: var(--red);
+}
+
+.yash-occupancy-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.yash-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  color: #080F1F;
+}
+
+.yash-badge-ok {
+  background: var(--green);
+}
+
+.yash-badge-warning {
+  background: var(--yellow);
+}
+
+.yash-badge-critical {
+  background: var(--red);
+}
+
+/* ---- Analytics Grid ---- */
+.yash-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.yash-chart-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.yash-chart-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: var(--card-2);
+  text-align: center;
+  padding: 20px;
+}
+
+.yash-chart-icon {
+  font-size: 32px;
+}
+
+.yash-chart-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.yash-chart-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.yash-chart-empty {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.yash-chart-container {
+  position: relative;
+  width: 100%;
+  max-height: 260px;
+  margin: 0 auto;
+}
+
+.yash-chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 260px;
+}
+
+.yash-chart-center-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  font-weight: 700;
+  color: #E8EAF0;
+  text-align: center;
+}
+
+.yash-time-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.yash-time-filter-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.yash-time-filter-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(30, 48, 80, 0.25);
+  border: 1px solid rgba(30, 48, 80, 0.4);
+  padding: 5px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.yash-time-filter-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.yash-time-filter-btn.active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- Footer ---- */
+.yash-footer {
+  text-align: center;
+  padding: 20px 28px;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1100px) {
+  .yash-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .yash-occupancy-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .yash-analytics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .yash-header {
+    padding: 16px 18px;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .yash-header-right {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .yash-stats-grid {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .yash-section {
+    padding: 16px 18px;
+  }
+
+  .yash-occupancy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .yash-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
