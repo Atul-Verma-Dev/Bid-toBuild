@@ -36,20 +36,21 @@ Delete `app.db` to reset demo data.
 
 ## Accounts & roles
 
-| Username | Password   | Role  | Can do                                                         |
-| -------- | ---------- | ----- | -------------------------------------------------------------- |
-| `user`   | `user123`  | user  | Operations: venues, events, staff deployment, redirections      |
-| `admin`  | `admin123` | admin | Everything a `user` can do, plus announcements                 |
+| Username | Password   | Role  | Permissions                                          |
+| -------- | ---------- | ----- | ---------------------------------------------------- |
+| `user`   | `user123`  | user  | **Read-only** — sees venues, events, occupancy, staff |
+| `admin`  | `admin123` | admin | Everything, plus every write                          |
 
-Reads are open, so every dashboard renders without signing in. Every write
-(venue name/capacity/occupancy, events, staff deployments, redirections) needs a
-bearer token from **either** role. Announcements stay admin-only.
+Every write is admin-only: creating/renaming/deleting venues, occupancy updates,
+redirections, event create/edit/delete, staff deployment and announcements. The
+`user` role cannot change, rename, update or delete anything; attempting a write
+returns `403`.
 
-The pages deliberately do not advertise credentials: the Live Dashboard and the
-Zone Monitor open **signed in as the `user` operator account** (silently calling
-`POST /auth/login`), so staff deployment, venue and event work out of the box;
-signing out leaves them read-only. The `admin` account is available via
-“Switch account”.
+The pages deliberately do not advertise credentials. The Live Dashboard and the
+Zone Monitor open **as the read-only `user` account** (silent `POST /auth/login`),
+so you land on a live, safe view. Changing anything means signing in explicitly
+as an administrator: “Admin sign in” in the dashboard top bar, or the “Admin sign
+in” button in the Zone Monitor.
 
 ## Auth flow
 
@@ -97,36 +98,36 @@ Send it as `Authorization: Bearer $TOKEN` on admin endpoints.
 
 ### Venues
 
-| Method | Path                        | Auth     | Description                                   |
-| ------ | --------------------------- | -------- | --------------------------------------------- |
-| GET    | `/venues`                   | —        | List venues (filters: `crowd_status`, `active`) |
-| GET    | `/venues/{id}`              | —        | Get one venue                                 |
-| GET    | `/venues/{id}/suggestion`   | —        | Redirection suggestion                        |
-| POST   | `/venues`                   | signed in | Create a venue                               |
-| PATCH  | `/venues/{id}`              | signed in | Rename / capacity / occupancy / opening / closing |
-| PATCH  | `/venues/{id}/occupancy`    | signed in | Update current occupancy                     |
-| DELETE | `/venues/{id}`              | signed in | Remove a venue                               |
+| Method | Path                        | Auth  | Description                                   |
+| ------ | --------------------------- | ----- | --------------------------------------------- |
+| GET    | `/venues`                   | —     | List venues (filters: `crowd_status`, `active`) |
+| GET    | `/venues/{id}`              | —     | Get one venue                                 |
+| GET    | `/venues/{id}/suggestion`   | —     | Redirection suggestion                        |
+| POST   | `/venues`                   | admin | Create a venue                                |
+| PATCH  | `/venues/{id}`              | admin | Rename / capacity / occupancy / opening / closing |
+| PATCH  | `/venues/{id}/occupancy`    | admin | Update current occupancy                      |
+| DELETE | `/venues/{id}`              | admin | Remove a venue                                |
 
 Every venue response carries `current_event` — the event scheduled in that
 venue, or `null` — so any page can show what is on where.
 
 ### Events (the programme)
 
-| Method | Path            | Auth      | Description                                          |
-| ------ | --------------- | --------- | ---------------------------------------------------- |
-| GET    | `/events`       | —         | List events (filter: `venue_id`), soonest first       |
-| GET    | `/events/{id}`  | —         | Get one event                                        |
-| POST   | `/events`       | signed in | Create an event and assign a venue                   |
-| PATCH  | `/events/{id}`  | signed in | Rename / move to another venue (`venue_id: null` clears it) |
-| DELETE | `/events/{id}`  | signed in | Delete an event                                      |
+| Method | Path            | Auth  | Description                                          |
+| ------ | --------------- | ----- | ---------------------------------------------------- |
+| GET    | `/events`       | —     | List events (filter: `venue_id`), soonest first       |
+| GET    | `/events/{id}`  | —     | Get one event                                        |
+| POST   | `/events`       | admin | Create an event and assign a venue                   |
+| PATCH  | `/events/{id}`  | admin | Rename / move to another venue (`venue_id: null` clears it) |
+| DELETE | `/events/{id}`  | admin | Delete an event                                      |
 
 ### Staff deployment
 
-| Method | Path                          | Auth      | Description                                     |
-| ------ | ----------------------------- | --------- | ----------------------------------------------- |
-| GET    | `/staff`                      | —         | Pool size, deployed/available totals, per-venue headcount |
-| POST   | `/staff/deployments`          | signed in | Deploy `{venue_id, count}` from the shared pool |
-| DELETE | `/staff/deployments/{venue_id}` | signed in | Recall every staff member from a venue        |
+| Method | Path                          | Auth  | Description                                     |
+| ------ | ----------------------------- | ----- | ----------------------------------------------- |
+| GET    | `/staff`                      | —     | Pool size, deployed/available totals, per-venue headcount |
+| POST   | `/staff/deployments`          | admin | Deploy `{venue_id, count}` from the shared pool |
+| DELETE | `/staff/deployments/{venue_id}` | admin | Recall every staff member from a venue        |
 
 The pool holds 12 staff. Deployments live in SQLite, so the headcount is shared
 by the dashboard, the zone monitor and the landing-page snapshot, and survives
@@ -230,15 +231,17 @@ static/js/         # monitoring.js, yash_dashboard.js
 Every page talks to the API on the **same origin** (no CORS setup needed) and
 falls back to local demo data if the backend is unreachable:
 
-- **Live dashboard** (`/dashboard`) — `GET /venues` + `GET /events` + `GET /staff`;
-  renames venues (`PATCH /venues/{id}`), edits capacity/occupancy, adds venues, and
-  renames, deletes or creates events with their venue (`/events`). Each venue card
-  shows the event running in it and the staff deployed there. The redirection banner
-  uses the backend's `GET /venues/{id}/suggestion` to confirm and explain its pick.
+- **Live dashboard** (`/dashboard`) — `GET /venues` + `GET /events` + `GET /staff`.
+  Every control (venue rename, capacity, occupancy, add/remove venue, redirect,
+  event create/rename/delete, assign venue) is disabled until an administrator
+  signs in; each venue card shows the event running in it and the staff deployed
+  there. The redirection banner uses `GET /venues/{id}/suggestion` to confirm and
+  explain its pick.
 - **Zone monitor** (`/zones`) — polls `GET /venues` + `GET /events` + `GET /staff`
   every 10 s for zone cards, alerts and redirection options. **Deploy staff** and
   **Recall** write straight to `/staff/deployments`, and the crowd simulation writes
-  occupancy through `PATCH /venues/{id}/occupancy`.
+  occupancy through `PATCH /venues/{id}/occupancy` — all of them admin-only, shown
+  as read-only until an administrator signs in.
 - **Analytics** (`/analytics`) — polls `GET /venues` + `GET /announcements` every 5 s
   and renders the doughnut / bar charts plus a trend line built from the live samples
   collected while the page is open (no fabricated history).

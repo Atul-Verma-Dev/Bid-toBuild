@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS venues (
     occupancy    INTEGER NOT NULL DEFAULT 0,
     opening_time TEXT NOT NULL DEFAULT '09:00',
     closing_time TEXT NOT NULL DEFAULT '21:00',
+    is_closed    INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL
 );
@@ -91,6 +92,7 @@ def init_db() -> None:
     connection = get_connection()
     try:
         connection.executescript(SCHEMA)
+        _migrate(connection)
         _seed_users(connection)
         _seed_venues(connection)
         _seed_announcements(connection)
@@ -98,6 +100,19 @@ def init_db() -> None:
         connection.commit()
     finally:
         connection.close()
+
+
+def _migrate(connection: sqlite3.Connection) -> None:
+    """Add columns that were introduced after a database was first created."""
+    _ensure_column(connection, "venues", "is_closed", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _ensure_column(
+    connection: sqlite3.Connection, table: str, column: str, definition: str
+) -> None:
+    existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def _seed_users(connection: sqlite3.Connection) -> None:

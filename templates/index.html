@@ -223,7 +223,7 @@
                     </button>
                 </div>
                 <p class="text-xs text-gray-500">
-                    Names, capacity, events and staff deployments are saved to the backend when you are signed in.
+                    Names, capacity, events and staff deployments are saved to the backend when you are signed in as an administrator.
                 </p>
             </div>
         </div>
@@ -398,14 +398,18 @@
        2b. WRITE PERMISSIONS + REDIRECT LOG
        ================================================================= */
 
-    /** Every write (venue / event edits, staff, redirections) needs the backend + a sign-in. */
-    function isWritable() { return state.live && auth.isLoggedIn; }
+    /**
+     * Writes (venue / event edits, staff, redirections) are admin-only.
+     * The dashboard opens as the read-only `user` account, so an administrator
+     * has to sign in explicitly via “Switch account”.
+     */
+    function isWritable() { return state.live && auth.isAdmin; }
 
     /** Returns true — and explains why — when a write must be blocked. */
     function blockWrite(action) {
         if (isWritable()) return false;
         toast(state.live
-            ? `${action} needs you to be signed in. Use “Switch account” in the top bar.`
+            ? `${action} is admin-only. Use “Switch account” in the top bar to sign in as an administrator.`
             : `${action} needs the backend. Start the API and reload.`, "error");
         return true;
     }
@@ -416,7 +420,7 @@
             toast(`${prefix}: session expired — sign in again.`, "error");
             renderConnection();
         } else if (err.status === 403) {
-            toast(`${prefix}: your account does not have permission for that.`, "error");
+            toast(`${prefix}: admin privileges are required for that.`, "error");
         } else {
             toast(`${prefix}: ${err.message}`, "error");
         }
@@ -478,6 +482,7 @@
             active: raw.is_active,
             hours: `${raw.opening_time}–${raw.closing_time}`,
             percentage: raw.occupancy_percentage,
+            isClosed: Boolean(raw.is_closed),
             current_event: raw.current_event || null
         };
     }
@@ -540,7 +545,9 @@
 
             const metaBits = [];
             if (zone.id != null) metaBits.push(`<span class="text-xs text-gray-500 font-mono">#${zone.id}</span>`);
-            if (zone.hours)      metaBits.push(`<span class="text-xs ${zone.active ? "text-green-600" : "text-red-500"}">
+            if (zone.hours) metaBits.push(zone.isClosed
+                ? `<span class="text-xs text-red-600 font-semibold"><i class="fas fa-lock mr-1"></i>Closed by operator</span>`
+                : `<span class="text-xs ${zone.active ? "text-green-600" : "text-red-500"}">
                     <i class="fas fa-clock mr-1"></i>${zone.active ? "Open" : "Closed"} · ${esc(zone.hours)}</span>`);
 
             // What is happening in this venue right now.
@@ -635,7 +642,18 @@
                         </div>
                     </div>
 
-                    <!-- (d) Remove venue -->
+                    <!-- (d) Open / close this venue -->
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <button type="button" data-action="toggle-venue" data-index="${index}"
+                                class="w-full ${zone.isClosed
+                                    ? "bg-emerald-600 hover:bg-emerald-700"
+                                    : "bg-amber-500 hover:bg-amber-600"} text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
+                            <i class="fas fa-${zone.isClosed ? "lock-open" : "door-closed"} mr-1"></i>
+                            ${zone.isClosed ? "Re-open venue" : "Close venue"}
+                        </button>
+                    </div>
+
+                    <!-- (e) Remove venue -->
                     <div class="mt-3 pt-3 border-t border-gray-200">
                         <button type="button" data-action="delete-venue" data-index="${index}"
                                 class="w-full bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-3 rounded-lg transition shadow">
@@ -662,7 +680,7 @@
                 el.disabled = true;
                 el.classList.add("opacity-50", "cursor-not-allowed");
                 el.title = state.live
-                    ? "Sign in as admin to edit venues."
+                    ? "Sign in as an administrator to edit venues."
                     : "Backend offline — editing disabled.";
             });
         }
@@ -900,7 +918,7 @@
     function evaluateRedirection() {
         // Show the WORST zone first, not just the first one in API order.
         const redZones = state.venues
-            .filter(z => statusBand(z, getPercentage(z)) === "critical")
+            .filter(z => statusBand(z, getPercentage(z)) === "critical" && z.active !== false)
             .sort((a, b) => getPercentage(b) - getPercentage(a));
 
         const amountInput = document.getElementById("redirectAmount");
@@ -921,7 +939,9 @@
 
         // Everyone who can receive attendees, emptiest first.
         const candidates = state.venues
-            .filter(z => z !== red && statusBand(z, getPercentage(z)) !== "critical")
+            .filter(z => z !== red
+                && z.active !== false
+                && statusBand(z, getPercentage(z)) !== "critical")
             .sort((a, b) => getPercentage(a) - getPercentage(b));
 
         const previousPick = targetSelect.value;
@@ -947,7 +967,7 @@
         redirectBtn.disabled = !writable || candidates.length === 0;
         hint.textContent = writable
             ? "Redirecting moves people for real: the crowded venue loses them and the chosen zone gains them."
-            : "Sign in to move attendees between venues.";
+            : "Admin sign-in required to move attendees between venues.";
 
         // When the data is live, let the backend's redirection algorithm confirm
         // (and explain) the choice: GET /venues/{id}/suggestion.
@@ -968,6 +988,30 @@
                 })
                 .catch(() => { /* banner already shows the local suggestion */ });
         }
+    }
+
+    /**
+     * Opens or closes a venue by hand. Closed venues stay closed to the public
+     * even inside their opening hours, and are never offered as a redirection
+     * destination.
+     */
+    async function toggleVenue(index) {
+        const zone = state.venues[index];
+        if (!zone) return;
+        if (blockWrite(zone.isClosed ? "Re-opening a venue" : "Closing a venue")) return;
+
+        try {
+            const updated = await apiFetch(`/venues/${zone.id}`, {
+                method: "PATCH", auth: true, body: { is_closed: !zone.isClosed }
+            });
+            Object.assign(zone, fromApiVenue(updated));
+            toast(updated.is_closed
+                ? `${updated.name} is now closed to the public.`
+                : `${updated.name} is open again.`, "success");
+        } catch (err) {
+            handleWriteError(err, `Could not change the status of “${zone.name}”`);
+        }
+        render();
     }
 
     /**
@@ -1166,12 +1210,34 @@
         const signedIn = auth.isLoggedIn;
         accountChip.classList.toggle("hidden", !signedIn);
         accountChip.classList.toggle("flex", signedIn);
-        accountLabel.textContent = signedIn ? `${auth.username} · ${auth.role}` : "";
+        accountLabel.textContent = signedIn
+            ? `${auth.username} · ${auth.role}${auth.isAdmin ? "" : " (read-only)"}`
+            : "";
         loginForm.classList.toggle("hidden", signedIn);
         loginForm.classList.toggle("flex", !signedIn);
         switchAccountBtn.classList.toggle("hidden", !signedIn);
         logoutBtn.classList.toggle("hidden", !signedIn);
+        // The read-only user account gets an explicit invite to sign in as admin.
+        switchAccountBtn.innerHTML = auth.isAdmin
+            ? '<i class="fas fa-user-edit mr-1"></i>Switch account'
+            : '<i class="fas fa-user-shield mr-1"></i>Admin sign in';
         loginBtn.disabled = false;
+
+        // The event programme and venue-toolbar controls are admin-only as well.
+        const canEdit = isWritable();
+        const lock = (el, hint) => {
+            if (!el) return;
+            el.disabled = !canEdit;
+            el.classList.toggle("opacity-50", !canEdit);
+            el.classList.toggle("cursor-not-allowed", !canEdit);
+            el.title = canEdit ? "" : hint;
+        };
+        ["editEventBtn", "deleteEventBtn", "newEventBtn"].forEach(id => lock(
+            document.getElementById(id), "Sign in as an administrator to change the programme."
+        ));
+        ["newVenueName", "newVenueCapacity", "addVenueBtn"].forEach(id => lock(
+            document.getElementById(id), "Sign in as an administrator to edit venues."
+        ));
 
         // Read-only vs signed-in notice
         const notice = document.getElementById("modeNotice");
@@ -1181,13 +1247,14 @@
             inner.className = "container mx-auto px-4 py-2 bg-amber-100 text-amber-900 border-b border-amber-300";
             noticeText.innerHTML = '<i class="fas fa-plug mr-2"></i>Backend offline — read-only. Start the API to edit venues, events and staff.';
             notice.classList.remove("hidden");
-        } else if (!signedIn) {
+        } else if (!auth.isAdmin) {
             inner.className = "container mx-auto px-4 py-2 bg-amber-100 text-amber-900 border-b border-amber-300";
-            noticeText.innerHTML = '<i class="fas fa-lock mr-2"></i>Read-only view — sign in to edit venues, events or deploy staff.';
+            noticeText.innerHTML = `<i class="fas fa-lock mr-2"></i>Viewing as <strong>${esc(auth.username)}</strong> (${esc(auth.role)}) — read-only. `
+                + 'Sign in as an administrator to change venues, events or staff.';
             notice.classList.remove("hidden");
         } else {
             inner.className = "container mx-auto px-4 py-2 bg-emerald-100 text-emerald-900 border-b border-emerald-300";
-            noticeText.innerHTML = `<i class="fas fa-unlock mr-2"></i>Signed in as <strong>${esc(auth.username)}</strong> — venue, event and staff changes are saved to the backend.`;
+            noticeText.innerHTML = `<i class="fas fa-unlock mr-2"></i>Administrator mode (<strong>${esc(auth.username)}</strong>) — venue, event and staff changes are saved to the backend.`;
             notice.classList.remove("hidden");
         }
     }
@@ -1295,8 +1362,8 @@
     }
 
     /**
-     * The workspace opens signed in as the standard operator account, so the
-     * dashboard is usable straight away; signing out stays read-only.
+     * The dashboard always opens on the read-only `user` account: you can watch
+     * every venue and event, but only an administrator can change anything.
      */
     async function ensureDefaultSession() {
         if (auth.isLoggedIn) return;
@@ -1320,6 +1387,7 @@
                 case "update-current":  updateCurrent(index); break;
                 case "update-capacity": updateCapacity(index); break;
                 case "rename-venue":    renameVenue(index); break;
+                case "toggle-venue":    toggleVenue(index); break;
                 case "delete-venue":    deleteVenue(index, trigger); break;
             }
         });

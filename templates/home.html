@@ -105,7 +105,7 @@
             </h2>
             <div id="snapshotGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-slate-400 text-sm">
-                    Loading venues from <code class="text-cyan-300">GET /venues</code>…
+                    Loading live venues…
                 </div>
             </div>
         </section>
@@ -113,11 +113,6 @@
 
     <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
         <p>© 2026 OmniView · Smart Event Crowd Management</p>
-        <p class="mt-2">
-            <a href="/docs" class="text-slate-400 hover:text-slate-200 underline underline-offset-4">API documentation</a>
-            <span class="mx-2 text-slate-700">·</span>
-            <a href="/health" class="text-slate-400 hover:text-slate-200 underline underline-offset-4">Service health</a>
-        </p>
     </footer>
 
     <script>
@@ -214,7 +209,8 @@
                 setApiStatus(false, "Backend offline");
                 document.getElementById("snapshotGrid").innerHTML = `
                     <div class="rounded-xl border border-red-900/60 bg-red-950/40 p-5 text-red-200 text-sm">
-                        Could not reach <code>GET /venues</code> — is the server running? (${esc(err.message)})
+                        <i class="fas fa-triangle-exclamation mr-1"></i>
+                        Live data is unavailable right now — please try again shortly.
                     </div>`;
             }
         }

@@ -297,7 +297,8 @@
           <span class="yash-occupancy-capacity">/ ${capacity.toLocaleString()}</span>
         </div>
         <div class="yash-occupancy-bar">
-          <div class="yash-progress yash-level-${status}" style="width:${occupancyPercentage}%"></div>
+          <div class="yash-progress yash-level-${status}"
+               style="width:${Math.min(Math.max(occupancyPercentage, 0), 100)}%"></div>
         </div>
         <div class="yash-occupancy-label">${occupancyPercentage.toFixed(1)}% <span class="yash-badge yash-badge-${badgeCls}">${label}</span></div>
       `;

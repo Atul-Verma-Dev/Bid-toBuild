@@ -1,14 +1,13 @@
 """Staff deployment endpoints.
 
-Any signed-in user (role `user` or `admin`) can deploy staff to a venue and
-recall them again — staffing is an on-the-floor operation, not an admin task.
-Deployments are stored in SQLite, so the count survives reloads and is shared
-between the dashboard, the zone monitor, and the headcount pool.
+Reading the pool is public; deploying staff to a venue and recalling them again
+require an admin token. Deployments are stored in SQLite, so the count survives
+reloads and is shared between the dashboard, the zone monitor and the pool.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from auth import get_current_user
+from auth import require_admin
 from database import get_db, now_iso
 from models import StaffDeploymentCreate, StaffOverview
 
@@ -64,11 +63,11 @@ def staff_overview(db=Depends(get_db)):
     "/deployments",
     response_model=StaffOverview,
     status_code=status.HTTP_201_CREATED,
-    summary="Deploy staff to a venue (any signed-in user)",
+    summary="Deploy staff to a venue (admin)",
 )
 def deploy_staff(
     payload: StaffDeploymentCreate,
-    user=Depends(get_current_user),
+    admin=Depends(require_admin),
     db=Depends(get_db),
 ):
     _check_venue(db, payload.venue_id)
@@ -86,7 +85,7 @@ def deploy_staff(
     db.execute(
         """INSERT INTO staff_deployments (venue_id, count, deployed_by, created_at)
            VALUES (?, ?, ?, ?)""",
-        (payload.venue_id, payload.count, user["username"], now_iso()),
+        (payload.venue_id, payload.count, admin["username"], now_iso()),
     )
     return _overview(db)
 
@@ -94,11 +93,11 @@ def deploy_staff(
 @router.delete(
     "/deployments/{venue_id}",
     response_model=StaffOverview,
-    summary="Recall every staff member deployed to a venue (any signed-in user)",
+    summary="Recall every staff member deployed to a venue (admin)",
 )
 def recall_staff(
     venue_id: int,
-    _user=Depends(get_current_user),
+    _admin=Depends(require_admin),
     db=Depends(get_db),
 ):
     _check_venue(db, venue_id)

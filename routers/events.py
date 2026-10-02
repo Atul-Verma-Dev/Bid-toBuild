@@ -1,8 +1,8 @@
-"""Event (program) endpoints. Reads are public; writes need a signed-in user."""
+"""Event (program) endpoints. Reads are public; writes require an admin token."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from auth import get_current_user
+from auth import require_admin
 from database import get_db, now_iso
 from models import EventCreate, EventOut, EventUpdate
 
@@ -75,11 +75,11 @@ def get_event(event_id: int, db=Depends(get_db)):
     "",
     response_model=EventOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Create an event",
+    summary="Create an event (admin)",
 )
 def create_event(
     payload: EventCreate,
-    _user=Depends(get_current_user),
+    _admin=Depends(require_admin),
     db=Depends(get_db),
 ):
     _check_venue(db, payload.venue_id)
@@ -103,12 +103,12 @@ def create_event(
 @router.patch(
     "/{event_id}",
     response_model=EventOut,
-    summary="Rename / edit an event, or move it to another venue",
+    summary="Rename / edit an event, or move it to another venue (admin)",
 )
 def update_event(
     event_id: int,
     payload: EventUpdate,
-    _user=Depends(get_current_user),
+    _admin=Depends(require_admin),
     db=Depends(get_db),
 ):
     _get_or_404(db, event_id)
@@ -136,9 +136,9 @@ def update_event(
 @router.delete(
     "/{event_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete an event",
+    summary="Delete an event (admin)",
 )
-def delete_event(event_id: int, _user=Depends(get_current_user), db=Depends(get_db)):
+def delete_event(event_id: int, _admin=Depends(require_admin), db=Depends(get_db)):
     _get_or_404(db, event_id)
     db.execute("DELETE FROM events WHERE id = ?", (event_id,))
     return None

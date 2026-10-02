@@ -57,6 +57,9 @@ def venue_to_dict(row, now: datetime | None = None) -> dict:
     """Serialize a venue row and attach all calculated fields."""
     now = now or datetime.now()
     percentage = occupancy_percentage(row["occupancy"], row["capacity"])
+    # An operator can close a venue by hand; it then counts as not open even
+    # while its daily opening window is running.
+    closed_by_operator = bool(row["is_closed"])
     return {
         "id": row["id"],
         "name": row["name"],
@@ -67,7 +70,9 @@ def venue_to_dict(row, now: datetime | None = None) -> dict:
         "available_capacity": max(row["capacity"] - row["occupancy"], 0),
         "opening_time": row["opening_time"],
         "closing_time": row["closing_time"],
-        "is_active": is_active(row["opening_time"], row["closing_time"], now),
+        "is_active": not closed_by_operator
+        and is_active(row["opening_time"], row["closing_time"], now),
+        "is_closed": closed_by_operator,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

@@ -296,7 +296,10 @@
   transition: width 0.4s ease;
 }
 
-.yash-level-ok {
+/* The status helper emits "safe" for NORMAL/MODERATE zones, so both names
+   have to resolve to the green fill — otherwise the bar renders transparent. */
+.yash-level-ok,
+.yash-level-safe {
   background: var(--green);
 }
 

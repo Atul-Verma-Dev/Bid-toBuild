@@ -1646,3 +1646,28 @@
   border: 1px solid #7c3aed;
   background: rgba(124, 58, 237, 0.16);
 }
+
+/* Open / close a zone by hand */
+.zone-monitor-module__toggle-venue {
+  margin-left: auto;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: 1px solid var(--zone-border);
+  background: transparent;
+  color: var(--zone-muted);
+  transition: color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.zone-monitor-module__toggle-venue:hover:not(:disabled) {
+  color: var(--zone-accent);
+  border-color: var(--zone-accent);
+}
+
+.zone-monitor-module__toggle-venue:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

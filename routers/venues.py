@@ -1,10 +1,10 @@
-"""Venue endpoints. Reads are public; writes need a signed-in user."""
+"""Venue endpoints. Reads are public; writes require an admin token."""
 
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from auth import get_current_user
+from auth import require_admin
 from crowd import find_redirection, venue_to_dict
 from database import get_db, now_iso
 from models import OccupancyUpdate, RedirectionOut, VenueCreate, VenueOut, VenueUpdate
@@ -88,10 +88,10 @@ def get_suggestion(venue_id: int, db=Depends(get_db)):
     "",
     response_model=VenueOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a venue (signed-in user)",
+    summary="Create a venue (admin)",
 )
 def create_venue(
-    payload: VenueCreate, _user=Depends(get_current_user), db=Depends(get_db)
+    payload: VenueCreate, _admin=Depends(require_admin), db=Depends(get_db)
 ):
     timestamp = now_iso()
     try:
@@ -120,12 +120,12 @@ def create_venue(
 @router.patch(
     "/{venue_id}",
     response_model=VenueOut,
-    summary="Update a venue (signed-in user): rename, capacity, occupancy, or timings",
+    summary="Update a venue (admin): rename, capacity, occupancy, or timings",
 )
 def update_venue(
     venue_id: int,
     payload: VenueUpdate,
-    _user=Depends(get_current_user),
+    _admin=Depends(require_admin),
     db=Depends(get_db),
 ):
     row = _get_venue_or_404(db, venue_id)
@@ -157,12 +157,12 @@ def update_venue(
 @router.patch(
     "/{venue_id}/occupancy",
     response_model=VenueOut,
-    summary="Update a venue's current occupancy (signed-in user)",
+    summary="Update a venue's current occupancy (admin)",
 )
 def update_occupancy(
     venue_id: int,
     payload: OccupancyUpdate,
-    _user=Depends(get_current_user),
+    _admin=Depends(require_admin),
     db=Depends(get_db),
 ):
     _get_venue_or_404(db, venue_id)
@@ -176,9 +176,9 @@ def update_occupancy(
 @router.delete(
     "/{venue_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remove a venue (signed-in user)",
+    summary="Remove a venue (admin)",
 )
-def delete_venue(venue_id: int, _user=Depends(get_current_user), db=Depends(get_db)):
+def delete_venue(venue_id: int, _admin=Depends(require_admin), db=Depends(get_db)):
     _get_venue_or_404(db, venue_id)
     db.execute("DELETE FROM venues WHERE id = ?", (venue_id,))
     return None

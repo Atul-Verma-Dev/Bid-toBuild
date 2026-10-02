@@ -170,7 +170,8 @@
         : Math.max((Number(raw.capacity) || 0) - (Number(raw.occupancy) || 0), 0),
       opening_time: raw.opening_time || "",
       closing_time: raw.closing_time || "",
-      is_active: typeof raw.is_active === "boolean" ? raw.is_active : true
+      is_active: typeof raw.is_active === "boolean" ? raw.is_active : true,
+      is_closed: Boolean(raw.is_closed)
     };
   }
 
@@ -214,14 +215,18 @@
     return String(zone.status || SEVERITY_LABEL[severity(zone)]).toUpperCase();
   }
 
-  /** Occupancy changes need a live backend plus a signed-in user. */
+  /**
+   * Every write on this page (occupancy, redirections, staff) is admin-only.
+   * The monitor opens on the read-only `user` account, so an administrator has
+   * to sign in explicitly through the Login button.
+   */
   function isWritable() {
-    return state.live && Boolean(auth.token);
+    return state.live && auth.isAdmin;
   }
 
-  /** Deploying or recalling staff is an operator action: any signed-in user. */
+  /** Deploying or recalling staff is an admin action as well. */
   function canDeployStaff() {
-    return state.live && Boolean(auth.token);
+    return state.live && auth.isAdmin;
   }
 
   /** The staff pool from the backend, with a local fallback until it loads. */
@@ -321,11 +326,15 @@
 
           <div class="zone-monitor-module__hours">
             <span class="zone-monitor-module__open-badge${open ? "" : " zone-monitor-module__open-badge--closed"}">
-              ${open ? "🟢 Open now" : "🔴 Closed now"}
+              ${open ? "🟢 Open now" : (zone.is_closed ? "🔴 Closed by operator" : "🔴 Closed now")}
             </span>
             <span class="zone-monitor-module__hours-text">
               ${escapeHtml(zone.opening_time)}${zone.closing_time ? " - " + escapeHtml(zone.closing_time) : ""}
             </span>
+            <button type="button" class="zone-monitor-module__toggle-venue" data-toggle-venue="${zone.id}"
+                    ${isWritable() ? "" : 'disabled title="Admin sign-in required"'}>
+              ${zone.is_closed ? "Re-open zone" : "Close zone"}
+            </button>
           </div>
 
           <!-- Which event is on in this zone, and how many staff are on site -->
@@ -351,6 +360,37 @@
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); }
       });
     });
+
+    grid.querySelectorAll("[data-toggle-venue]").forEach(btn => {
+      btn.addEventListener("click", (event) => {
+        // The card itself selects the zone for redirection — don't do both.
+        event.stopPropagation();
+        toggleVenueStatus(Number(btn.dataset.toggleVenue));
+      });
+    });
+  }
+
+  /** Opens or closes a zone by hand (admin only; closed zones take no crowds). */
+  async function toggleVenueStatus(zoneId) {
+    const zone = state.zones.find(z => z.id === zoneId);
+    if (!zone) return;
+    if (!isWritable()) {
+      showToast("Only an administrator can open or close a zone. Sign in first.", "error");
+      return;
+    }
+
+    try {
+      const updated = await apiFetch(`/venues/${zone.id}`, {
+        method: "PATCH", auth: true, body: { is_closed: !zone.is_closed }
+      });
+      Object.assign(zone, normalizeZone(updated));
+      showToast(updated.is_closed
+        ? `${updated.name} is closed to the public.`
+        : `${updated.name} is open again.`, "success");
+    } catch (err) {
+      showToast(`Could not change the zone status: ${err.message}`, "error");
+    }
+    refreshAll();
   }
 
   /* ------------------------------------------------------------------
@@ -521,7 +561,7 @@
             <div class="zone-monitor-module__recommendation-actions">
               <button type="button" class="zone-monitor-module__redirect-button"
                       data-redirect-to="${rec.zone.id}"
-                      ${isWritable() ? "" : 'disabled title="Sign in to move attendees"'}>
+                      ${isWritable() ? "" : 'disabled title="Admin sign-in required to move attendees"'}>
                 REDIRECT HERE
               </button>
             </div>
@@ -595,7 +635,7 @@
    */
   async function performRedirect(sourceId, targetId, amount, list) {
     if (!isWritable()) {
-      showToast("Sign in to move attendees between zones.", "error");
+      showToast("Only an administrator can move attendees. Sign in first.", "error");
       renderRecommendations();
       return;
     }
@@ -688,8 +728,8 @@
       hint.textContent = !state.live
         ? "Start the backend to deploy staff."
         : writable
-          ? `Signed in as ${auth.username} (${auth.role}) — deployments are saved and shared across the event.`
-          : "Sign in to deploy staff to a zone.";
+          ? `Administrator mode (${auth.username}) — deployments are saved and shared across the event.`
+          : `Read-only (${auth.username || "guest"}) — sign in as an administrator to deploy staff.`;
       hint.classList.toggle("is-locked", !writable);
     }
 
@@ -747,11 +787,11 @@
 
             <div class="zone-monitor-module__staff-actions">
               <button type="button" class="zone-monitor-module__deploy-button" data-deploy="${zone.id}"
-                      ${canDeploy ? "" : `disabled title="${writable ? "No staff left in the pool" : "Sign in to deploy staff"}"`}>
+                      ${canDeploy ? "" : `disabled title="${writable ? "No staff left in the pool" : "Admin sign-in required to deploy staff"}"`}>
                 Deploy ${deploymentSize} staff
               </button>
               <button type="button" class="zone-monitor-module__recall-button" data-recall="${zone.id}"
-                      ${writable && onSite > 0 ? "" : `disabled title="${writable ? "Nobody is deployed here" : "Sign in to recall staff"}"`}>
+                      ${writable && onSite > 0 ? "" : `disabled title="${writable ? "Nobody is deployed here" : "Admin sign-in required to recall staff"}"`}>
                 Recall
               </button>
             </div>
@@ -771,7 +811,7 @@
   async function deployStaff(zoneId) {
     const zone = state.zones.find(z => z.id === zoneId);
     if (!zone) return;
-    if (!canDeployStaff()) { showToast("Sign in to deploy staff.", "error"); return; }
+    if (!canDeployStaff()) { showToast("Only an administrator can deploy staff. Sign in first.", "error"); return; }
 
     const overview = staffOverview();
     if (overview.available < 1) {
@@ -795,7 +835,7 @@
   async function recallStaff(zoneId) {
     const zone = state.zones.find(z => z.id === zoneId);
     if (!zone) return;
-    if (!canDeployStaff()) { showToast("Sign in to recall staff.", "error"); return; }
+    if (!canDeployStaff()) { showToast("Only an administrator can recall staff. Sign in first.", "error"); return; }
 
     try {
       state.staff = await apiFetch(`/staff/deployments/${zone.id}`, { method: "DELETE", auth: true });
@@ -864,14 +904,14 @@
 
     document.querySelectorAll("[data-simulation-action], #simulation-surge").forEach(btn => {
       btn.disabled = !writable;
-      btn.title = writable ? "" : "Sign in to change occupancy.";
+      btn.title = writable ? "" : "Admin sign-in required to change occupancy.";
     });
 
     const hint = $("simulation-hint");
     if (hint) {
       hint.textContent = writable
-        ? "Signed in — ±10 / ±50 / surge write the zone's occupancy straight to the backend."
-        : "Read-only — sign in to run the simulation (it changes real occupancy).";
+        ? "Administrator mode — ±10 / ±50 / surge write the zone's occupancy straight to the backend."
+        : "Read-only — sign in as an administrator to run the simulation (it changes real occupancy).";
       hint.classList.toggle("is-locked", !writable);
     }
   }
@@ -882,7 +922,7 @@
     if (!zone) { showToast("Load a zone before simulating.", "error"); return; }
 
     if (!isWritable()) {
-      showToast("The simulation changes real occupancy — sign in first.", "error");
+      showToast("The simulation changes real occupancy — admin sign-in required.", "error");
       return;
     }
 
@@ -980,12 +1020,12 @@
 
     if (auth.token) {
       sessionBar.classList.remove("hidden");
-      roleEl.textContent = `👋 ${auth.username} (${auth.role})`;
-      loginOpen.textContent = "Switch account";
+      roleEl.textContent = `👋 ${auth.username} (${auth.role})${auth.isAdmin ? "" : " · read-only"}`;
+      loginOpen.textContent = auth.isAdmin ? "Switch account" : "Admin sign in";
       panel.classList.add("hidden");
     } else {
       sessionBar.classList.add("hidden");
-      loginOpen.textContent = "Login / Demo";
+      loginOpen.textContent = "Admin sign in";
     }
     renderConnection();
   }
@@ -997,8 +1037,7 @@
     const errorEl = $("login-error");
     errorEl.textContent = "";
 
-    apiFetch("/auth/login", { method: "POST", body: { username, password } })
-      .then(data => {
+    apiFetch("/auth/login", { method: "POST", body: { username, password } })        .then(data => {
         auth.save(data);
         showToast(`Signed in as ${data.username} (${data.role}).`, "success");
         $("login-panel").classList.add("hidden");
@@ -1015,14 +1054,14 @@
 
   function handleLogout() {
     auth.clear();
-    showToast("Signed out — the monitor is read-only until you sign in again.", "success");
+    showToast("Signed out — the monitor is read-only until an administrator signs in.", "success");
     renderAuth();
     refreshAll();
   }
 
   /**
-   * The monitor opens signed in as the standard operator account, so staff can
-   * be deployed straight away; signing out stays read-only.
+   * The monitor opens on the read-only `user` account: everything is visible,
+   * but only an administrator can change occupancy or deploy staff.
    */
   async function ensureDefaultSession() {
     if (auth.token) return;
