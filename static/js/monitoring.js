@@ -7,6 +7,21 @@
    ============================================================ */
 
 // Mock state
+const MOCK_STAFF = [
+  { id: 101, name: "Rahul" },
+  { id: 102, name: "Priya" },
+  { id: 103, name: "Arjun" },
+  { id: 104, name: "Ananya" },
+  { id: 105, name: "Vikram" },
+  { id: 106, name: "Sneha" },
+  { id: 107, name: "Rohan" },
+  { id: 108, name: "Isha" },
+  { id: 109, name: "Karan" },
+  { id: 110, name: "Mira" },
+  { id: 111, name: "Aarav" },
+  { id: 112, name: "Diya" },
+];
+
 const state = {
   zones: [
     {
@@ -45,6 +60,19 @@ const state = {
       growthRate: 12,
     },
   ],
+  staff: {
+    total: MOCK_STAFF.length,
+    available: MOCK_STAFF.length,
+    deployed: 0,
+    busy: 0,
+  },
+  simulation: {
+    activeZoneId: 1,
+    step: 1,
+  },
+  alerts: [],
+  recommendations: [],
+  staffRecommendations: [],
 };
 
 // ----------------------------------------------------------------
