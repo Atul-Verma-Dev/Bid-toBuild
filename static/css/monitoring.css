@@ -1280,3 +1280,98 @@
   flex-direction: column;
   gap: 16px;
 }
+
+/* --- Zone monitor auth bar --- */
+.zone-monitor-module__auth {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+#login-open,
+#logout {
+  font-size: 13px;
+  padding: 6px 12px;
+  border: 1px solid var(--zone-border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.zone-monitor-module__login {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--zone-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.zone-monitor-module__login-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 260px;
+}
+
+.zone-monitor-module__login-box input {
+  padding: 8px 10px;
+  border: 1px solid var(--zone-border);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.zone-monitor-module__text-error {
+  color: var(--danger);
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.zone-monitor-module__btn-ghost {
+  font-size: 13px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--zone-text);
+  cursor: pointer;
+}
+
+.zone-monitor-module__session {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--zone-text);
+  background: var(--panel);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--zone-border);
+}
+
+.zone-monitor-module__session a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.zone-monitor-module__login.hidden,
+.zone-monitor-module__session.hidden {
+  display: none;
+}
+
+.zone-monitor-module__login form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.zone-monitor-module__login form input {
+  width: 100%;
+}
+.zone-monitor-module__login form button {
+  align-self: flex-end;
+}
+
+/* Login panel base (shown by auth.js) */
+.zone-monitor-module__login {
+  position: relative;
+}

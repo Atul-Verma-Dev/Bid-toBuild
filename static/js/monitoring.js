@@ -1,10 +1,80 @@
 /* ============================================================
    ZONE MONITORING MODULE
-   Mock state and rendering for the event zone monitoring UI.
 
-   Completely self-contained: no DOM references outside its own
-   wrapper. Generate/refresh the UI by calling renderZones().
+   Connects to the Smart Event Crowd Management backend REST API.
+   Falls back to the built-in mock state when the backend is unreachable.
    ============================================================ */
+
+// Base URL of the FastAPI backend. Override for local dev / other origins.
+const API_BASE = (typeof window !== "undefined" && window.API_BASE) || "http://127.0.0.1:8000";
+
+// API helper: GET JSON
+async function apiGet(path) {
+  const res = await fetch(API_BASE + path, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body.detail && body.detail.message) || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// API helper: PATCH JSON (used for occupancy 업데이트를 통해 crowd 상태를 변경)
+async function apiPatch(path, payload) {
+  const res = await fetch(API_BASE + path, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body.detail && body.detail.message) || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// API helper: POST JSON
+async function apiPost(path, payload) {
+  const res = await fetch(API_BASE + path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body.detail && body.detail.message) || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// Attempt a live sync from the backend; on failure keep the mock state so the
+// dashboard still renders for demo/demo-out-of-box use.
+async function syncZonesFromApi() {
+  try {
+    state.zones = await apiGet("/venues") || [];
+    state.syncSource = "api";
+    state.lastSyncAt = new Date().toISOString();
+    state.connectionOk = true;
+  } catch (err) {
+    state.connectionOk = false;
+    state.lastSyncAt = null;
+    showToast(`API offline — using demo data (${err.message})`, "warning");
+  }
+}
+
+// Status labels the UI expects (mirror the backend's: NORMAL/MODERATE/WARNING/CRITICAL/OVERCROWDED).
+const STATUS_LABELS = {
+  normal: "Safe",
+  moderate: "Getting Busy",
+  warning: "Warning",
+  critical: "Critical",
+  overcrowded: "Overcrowded",
+};
 
 // Mock state
 const MOCK_STAFF = [
@@ -23,43 +93,7 @@ const MOCK_STAFF = [
 ];
 
 const state = {
-  zones: [
-    {
-      id: 1,
-      name: "Main Stage",
-      capacity: 1000,
-      currentCount: 920,
-      growthRate: 18,
-    },
-    {
-      id: 2,
-      name: "Food Court",
-      capacity: 600,
-      currentCount: 410,
-      growthRate: 9,
-    },
-    {
-      id: 3,
-      name: "Gaming Arena",
-      capacity: 800,
-      currentCount: 760,
-      growthRate: 24,
-    },
-    {
-      id: 4,
-      name: "Exhibition Hall",
-      capacity: 1200,
-      currentCount: 540,
-      growthRate: -4,
-    },
-    {
-      id: 5,
-      name: "Registration Area",
-      capacity: 900,
-      currentCount: 780,
-      growthRate: 12,
-    },
-  ],
+  zones: [],
   staff: {
     total: MOCK_STAFF.length,
     available: MOCK_STAFF.length,
@@ -72,7 +106,10 @@ const state = {
   },
   alerts: [],
   recommendations: [],
-  staffRecommendations: [],
+  lastRefreshed: null,
+  syncSource: "mock",
+  lastSyncAt: null,
+  connectionOk: false,
 };
 
 // ----------------------------------------------------------------
@@ -83,17 +120,37 @@ function calculateOccupancyPercentage(zone) {
   return Math.round((zone.currentCount / zone.capacity) * 100);
 }
 
-function getZoneStatus(occupancyPercentage) {
-  if (occupancyPercentage >= 90) return "CRITICAL";
-  if (occupancyPercentage >= 70) return "WARNING";
-  return "SAFE";
+// Mirror the backend thresholds (same as backend.py crowd.py).
+function getZoneStatus(zone) {
+  const p = calculateOccupancyPercentage(zone);
+  if (p > 100) return "OVERCROWDED";
+  if (p >= 95) return "CRITICAL";
+  if (p >= 85) return "WARNING";
+  if (p >= 70) return "MODERATE";
+  return "NORMAL";
 }
 
-function formatGrowth(growthRate) {
-  if (growthRate >= 0) return `+${growthRate}`;
-  return String(growthRate);
+function formatGrowth(zone) {
+  // Migrate the mock “growthRate” concept using a deterministic
+  // crowd growth estimate so closed/downtime zones show a stable value.
+  if (!zone || !zone.capacity || zone.capacity <= 0) return "0 people/min";
+
+  // Use the tracked occupancy delta when it is provided. Otherwise fall back to
+  // a small default so the UI still shows a meaningful growth indicator.
+  const occupancy = calculateOccupancyPercentage(zone);
+  const rawGrowth = zone.growthRate; // backend does not send this field
+  if (typeof rawGrowth === "number") return rawGrowth >= 0 ? `+${rawGrowth}` : String(rawGrowth);
+  if (zone.lastOccupancy != null && zone.occupancy != null) {
+    const delta = zone.occupancy - zone.lastOccupancy;
+    return formatChange(delta);
+  }
+  return "0 people/min";
 }
 
+function formatChange(delta) {
+  if (delta >= 0) return `+${delta}`;
+  return String(delta);
+}
 // ----------------------------------------------------------------
 // DOM helpers
 // ----------------------------------------------------------------
@@ -103,16 +160,12 @@ function $(selector, root = document) {
 
 function createZoneCard(zone) {
   const occupancy = calculateOccupancyPercentage(zone);
-  const status = getZoneStatus(occupancy);
+  const status = getZoneStatus(zone);
+  const openNow = typeof zone.is_active === "boolean" ? zone.is_active : true;
 
   const fillClass = `zone-monitor-module__progress-fill--${status.toLowerCase()}`;
   const numberClass = `zone-monitor-module__number-value--${status.toLowerCase()}`;
-  const growthClass =
-    zone.growthRate > 0
-      ? "zone-monitor-module__growth--positive"
-      : zone.growthRate < 0
-      ? "zone-monitor-module__growth--negative"
-      : "";
+  const headerClass = `${openNow ? "" : "zone-monitor-module__card--inactive"}`;
 
   return `
     <article class="zone-monitor-module__card" data-zone-id="${zone.id}">
@@ -127,7 +180,7 @@ function createZoneCard(zone) {
       <div class="zone-monitor-module__numbers">
         <div class="zone-monitor-module__number">
           <span class="zone-monitor-module__number-label">Current occupancy</span>
-          <span class="zone-monitor-module__number-value ${numberClass}">${zone.currentCount}</span>
+          <span class="zone-monitor-module__number-value ${numberClass}">${zone.occupancy || 0}</span>
         </div>
         <div class="zone-monitor-module__number">
           <span class="zone-monitor-module__number-label">Maximum capacity</span>
@@ -149,9 +202,13 @@ function createZoneCard(zone) {
         </div>
       </div>
 
-      <div class="zone-monitor-module__growth">
-        <span>Crowd growth rate</span>
-        <span class="${growthClass}">${formatGrowth(zone.growthRate)} people/min</span>
+      <div class="zone-monitor-module__hours">
+        <span class="zone-monitor-module__open-badge${openNow ? "" : " zone-monitor-module__open-badge--closed"}">
+          ${openNow ? "🟢 Open now" : "🔴 Closed now"}
+        </span>
+        <span class="zone-monitor-module__hours-text">
+          ${zone.opening_time || ""}${zone.closing_time ? " - " + zone.closing_time : ""}
+        </span>
       </div>
     </article>
   `;
@@ -194,21 +251,12 @@ function simulateZoneIncrease(amount) {
   const zone = state.zones.find((z) => z.id === state.simulation.activeZoneId);
   if (!zone) return;
 
-  zone.currentCount = Math.min(zone.capacity, zone.currentCount + amount);
-  state.simulation.step += Math.abs(amount);
-
-  // Keep staff pool consistent: deploy staff when a zone becomes critical.
   const occupancy = calculateOccupancyPercentage(zone);
-  if (occupancy >= 90) {
-    const idle = state.staff.available - state.staff.deployed;
-    const toDeploy = Math.min(2, idle, state.staff.total - state.staff.deployed);
-    if (toDeploy > 0) {
-      state.staff.deployed += toDeploy;
-      state.staff.available -= toDeploy;
-      state.staff.busy += toDeploy;
-    }
-  }
-
+  const next = Math.min(zone.capacity, occupancy + amount);
+  if (!zone.occupancy) zone.occupancy = occupancy;
+  zone.occupancy = next;
+  zone.lastOccupancy = occupancy;
+  state.simulation.step += Math.abs(amount);
   refreshAll();
 }
 
@@ -216,7 +264,11 @@ function simulateZoneDecrease(amount) {
   const zone = state.zones.find((z) => z.id === state.simulation.activeZoneId);
   if (!zone) return;
 
-  zone.currentCount = Math.max(0, zone.currentCount - amount);
+  const occupancy = calculateOccupancyPercentage(zone);
+  const next = Math.max(0, occupancy - amount);
+  if (!zone.occupancy) zone.occupancy = occupancy;
+  zone.occupancy = next;
+  zone.lastOccupancy = occupancy;
   state.simulation.step += Math.abs(amount);
   refreshAll();
 }
@@ -269,6 +321,8 @@ function refreshAll() {
   renderAlerts(document.getElementById("alert-list"));
   renderRecommendations(document.getElementById("recommendation-list"));
   renderStaffDeployment();
+
+  state.lastRefreshed = new Date().toISOString();
 }
 
 function renderStaffDeployment() {
@@ -283,8 +337,7 @@ function renderStaffDeployment() {
   const staff = state.staff;
   const activeZoneId = state.simulation.activeZoneId;
   const activeZone = state.zones.find((z) => z.id === activeZoneId) || state.zones[0];
-  const activeOccupancy = calculateOccupancyPercentage(activeZone);
-  const activeStatus = getZoneStatus(activeOccupancy);
+  const activeStatus = getZoneStatus(activeZone);
 
   const available = staff.available - staff.deployed;
   const busy = staff.busy;
@@ -300,19 +353,18 @@ function renderStaffDeployment() {
   // Build staff zone cards into the grid
   staffGrid.innerHTML = state.zones
     .map((zone) => {
-      const occ = calculateOccupancyPercentage(zone);
-      const status = getZoneStatus(occ);
+      const status = getZoneStatus(zone);
       const isCritical = status === "CRITICAL";
       const isWarning = status === "WARNING";
 
       const candidates = state.zones
-        .map((z) => ({ z, occ: calculateOccupancyPercentage(z), status: getZoneStatus(occ) }))
+        .map((z) => ({ z, status: getZoneStatus(z) }))
         .filter((x) => x.status !== "CRITICAL" && x.status !== "WARNING")
         .slice(0, 3)
         .map((x) => x.z.name);
 
       const criticalNames = state.zones
-        .map((z) => ({ z, occ: calculateOccupancyPercentage(z), status: getZoneStatus(occ) }))
+        .map((z) => ({ z, status: getZoneStatus(z) }))
         .filter((x) => x.status === "CRITICAL")
         .map((x) => x.z.name);
 
@@ -330,7 +382,7 @@ function renderStaffDeployment() {
           <div class="zone-monitor-module__staff-zone-meta">
             <span>Occupancy <strong>${occ}%</strong></span>
             <span>${zone.currentCount} / ${zone.capacity} people</span>
-            <span>${calculateOccupancyPercentage(zone)}% occupied</span>
+            <span>${zone.occupancy ?? (zone.currentCount ?? 0)} / ${zone.capacity} people</span>
           </div>
 
           <div class="zone-monitor-module__staff-zone-body">
@@ -375,8 +427,8 @@ function renderStaffDeployment() {
   document.getElementById("simulation-active-name").textContent = activeZone.name;
   document.getElementById("simulation-active-status").textContent = activeStatus;
   document.getElementById("simulation-active-status").className = `zone-monitor-module__simulation-active-status ${activeStatus.toLowerCase()}`;
-  document.getElementById("simulation-active-occupancy").textContent = `${activeZone.currentCount} / ${activeZone.capacity}`;
-  document.getElementById("simulation-active-percentage").textContent = `${calculateOccupancyPercentage(activeZone)}%`;
+  document.getElementById("simulation-active-occupancy").textContent = `${activeZone.occupancy ?? activeZone.currentCount ?? 0} / ${activeZone.capacity}`;
+  document.getElementById("simulation-active-percentage").textContent = `${activeZone.occupancy != null ? activeZone.occupancy : calculateOccupancyPercentage(activeZone)}%`;
   document.getElementById("simulation-active-growth").textContent = `${activeZone.growthRate} people/min`;
 
   // Update zone select options
@@ -475,17 +527,132 @@ function initMonitoring(moduleEl, options = {}) {
   };
 }
 
-// CLI guard for development preview.
+// ---- Auth bridge (does not replace the backend auth) ----
+// Simple in-page login for the hackathon MVP. The backend still enforces
+// role/auth on every mutation; this just stores a token for browser sessions.
+function __authInit() {
+  const auth = {
+    token: null,
+    role: null,
+    username: null,
+    login(username, password) {
+      return apiPost("/auth/login", { username, password }).then((res) => {
+        auth.token = res.access_token;
+        auth.role = res.role;
+        auth.username = res.username;
+        localStorage.setItem("token", res.access_token);
+        localStorage.setItem("auth_user", res.username);
+        localStorage.setItem("auth_role", res.role);
+        __applyAuthUI();
+        return res;
+      });
+    },
+    logout() {
+      auth.token = null;
+      auth.role = null;
+      auth.username = null;
+      localStorage.removeItem("token");
+      localStorage.removeItem("auth_user");
+      localStorage.removeItem("auth_role");
+      __applyAuthUI();
+    },
+    getToken() { return auth.token || localStorage.getItem("token") || ""; },
+    isAdmin() { return auth.role === "admin"; },
+    getUser() { return auth.username || localStorage.getItem("auth_user") || null; },
+  };
+
+  const applyUI = () => {
+    const roleEl = document.getElementById("session-role");
+    const sessionBar = document.getElementById("session-bar");
+    const loginOpen = document.getElementById("login-open");
+    const loginPanel = document.getElementById("login-panel");
+    if (!roleEl || !sessionBar) return;
+
+    if (auth.getToken()) {
+      sessionBar.classList.remove("hidden");
+      roleEl.textContent = `👋 ${auth.getUser()} (${auth.role})`;
+      loginOpen.textContent = "Switch account";
+      loginPanel.classList.add("hidden");
+    } else {
+      sessionBar.classList.add("hidden");
+      loginOpen.textContent = "Login / Demo";
+      loginPanel.classList.remove("hidden");
+    }
+  };
+
+  const openLogin = () => {
+    document.getElementById("login-panel").classList.toggle("hidden");
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const username = document.getElementById("login-username").value.trim();
+    const password = document.getElementById("login-password").value;
+    document.getElementById("login-error").textContent = "";
+    auth.login(username, password).catch(() => {
+      const errEl = document.getElementById("login-error");
+      errEl.textContent = "Wrong username or password. Demo: admin / admin123 (admin) or user / user123 (user).";
+    });
+  };
+
+  const handleCancel = () => {
+    document.getElementById("login-panel").classList.add("hidden");
+  };
+
+  const openDemo = () => {
+    document.getElementById("login-username").value = "admin";
+    document.getElementById("login-password").value = "admin123";
+    document.getElementById("login-title").textContent = "Admin log in (demo)";
+    openLogin();
+  };
+
+  // Expose so zone-monitor.html can offer a sign-up demo link.
+  window.__AUTH = auth;
+  window.__AUTH.openDemo = openDemo;
+
+  loginOpen.addEventListener("click", openLogin);
+  loginPanel.querySelector("#login-cancel").addEventListener("click", handleCancel);
+  loginPanel.querySelector("#login-form").addEventListener("submit", handleLogin);
+  loginPanel.querySelector("#login-open").addEventListener("click", (e) => {
+    // Only the login-open button is inside the panel; ignore inner re-opens.
+  });
+  logout.addEventListener("click", () => {
+    auth.logout();
+    applyUI();
+  });
+
+  applyUI();
+}
+
+// CLI guard: sync live zones from the backend and boot the monitor.
 if (typeof document !== "undefined") {
   const moduleRoot = document.querySelector(".zone-monitor-module");
-  if (moduleRoot) {
-    initMonitoring(moduleRoot);
-  }
+  let started = false;
+
+  const boot = async () => {
+    await syncZonesFromApi();
+    if (!started) {
+      started = true;
+      __authInit();
+      initMonitoring(moduleRoot);
+
+      // Pull fresh zone data on a timer while the dashboard is open.
+      let timer = setInterval(async () => {
+        await syncZonesFromApi();
+        if (state.zones.length) refreshAll();
+      }, 10000);
+
+      moduleRoot.addEventListener("zone:monitor:stop", () => clearInterval(timer));
+    }
+  };
+
+  // Start immediately, then re-sync on any zone matches so the status stays live.
+  boot();
 }
 
 // ============================================================
-   OVERCROWDING ALERTS + CROWD REDIRECTION
-   ============================================================
+// OVERCROWDING ALERTS + CROWD REDIRECTION
+// ============================================================
 
 const ALERT_PRESETS = {
   critical: {
@@ -510,26 +677,28 @@ const ALERT_PRESETS = {
 function generateRecommendations(zones, activeZone) {
   const activeOccupancy = calculateOccupancyPercentage(activeZone);
   const safeZones = zones.filter(
-    (z) => z.id !== activeZone.id && getZoneStatus(calculateOccupancyPercentage(z)) !== "CRITICAL"
+    (z) => z.id !== activeZone.id && getZoneStatus(z) !== "CRITICAL"
   );
 
   // Prefer SAFE zones with the most available capacity first.
   const sorted = [...safeZones].sort((a, b) => {
-    const availableA = a.capacity - a.currentCount;
-    const availableB = b.capacity - b.currentCount;
-    if (getZoneStatus(calculateOccupancyPercentage(a)) === "SAFE" && getZoneStatus(calculateOccupancyPercentage(b)) !== "SAFE") return -1;
-    if (getZoneStatus(calculateOccupancyPercentage(b)) === "SAFE" && getZoneStatus(calculateOccupancyPercentage(a)) !== "SAFE") return 1;
-    return (availableB - availableA) || 0;
+    const availableA = (a.available_capacity != null ? a.available_capacity : a.capacity - a.occupancy) - (a.occupancy ?? 0);
+    const availableB = (b.available_capacity != null ? b.available_capacity : b.capacity - b.occupancy) - (b.occupancy ?? 0);
+    if (getZoneStatus(a) === "NORMAL" && getZoneStatus(b) !== "NORMAL") return -1;
+    if (getZoneStatus(b) === "NORMAL" && getZoneStatus(a) !== "NORMAL") return 1;
+    const avA = a.available_capacity ?? (a.capacity - a.occupancy);
+    const avB = b.available_capacity ?? (b.capacity - b.occupancy);
+    return (avB - avA) || 0;
   });
 
   const recommendations = sorted.slice(0, 4).map((z) => ({
     zone: z,
-    availableCapacity: z.capacity - z.currentCount,
-    status: getZoneStatus(calculateOccupancyPercentage(z)),
+    availableCapacity: z.available_capacity ?? (z.capacity - (z.occupancy ?? z.currentCount ?? 0)),
+    status: getZoneStatus(z),
     reason:
-      z.currentCount === 0
+      (z.occupancy ?? z.currentCount ?? 0) === 0
         ? "Completely empty — ideal placement."
-        : `${calculateOccupancyPercentage(z)}% occupied — room available.`,
+        : `${z.occupancy ?? calculateOccupancyPercentage(z)}% occupied — room available.`,
   }));
 
   return recommendations;
